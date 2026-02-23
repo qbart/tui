@@ -35,6 +35,7 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun) (PipelineVi
 	}
 
 	viewCols := make([][]StepView, len(columns))
+	stepsByID := make(map[string]StepView, len(spec.Steps))
 	for i, col := range columns {
 		viewCol := make([]StepView, 0, len(col))
 		for _, step := range col {
@@ -43,19 +44,26 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun) (PipelineVi
 				deps = append(deps, string(dep))
 			}
 
-			viewCol = append(viewCol, StepView{
+			viewStep := StepView{
 				ID:        string(step.ID),
 				Icon:      "",
 				JobName:   step.JobName,
 				DependsOn: deps,
-			})
+			}
+			viewCol = append(viewCol, viewStep)
+			stepsByID[viewStep.ID] = viewStep
 		}
 		viewCols[i] = viewCol
 	}
 
 	viewPos := make(map[string]StepPositionView, len(positions))
 	for stepID, pos := range positions {
-		viewPos[string(stepID)] = StepPositionView{Column: pos.Column, Row: pos.Row}
+		step, ok := stepsByID[string(stepID)]
+		width := 0
+		if ok {
+			width = NewStepComponent(step, 0).PreferredWidth()
+		}
+		viewPos[string(stepID)] = StepPositionView{Column: pos.Column, Row: pos.Row, Width: width}
 	}
 
 	return PipelineView{Columns: viewCols, Positions: viewPos, RowCount: rowCount}, nil
