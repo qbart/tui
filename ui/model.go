@@ -237,7 +237,87 @@ func renderPipelineGraph(view PipelineView) []string {
 		}
 	}
 
-	// Pass 2: draw ports by absolute (x,y) positions only.
+	// Pass 2: draw lines/ports by absolute (x,y) positions.
+	linePoints := map[[2]int]rune{}
+	stampLine := func(x, y int, ch rune) {
+		if x < 0 || x >= totalWidth || y < 0 || y >= totalRows {
+			return
+		}
+		p := [2]int{x, y}
+		existing, ok := linePoints[p]
+		if !ok {
+			linePoints[p] = ch
+			return
+		}
+		// Merge simple crossings for orthogonal line intersections.
+		if (existing == '━' && ch == '┃') || (existing == '┃' && ch == '━') || existing == '╋' || ch == '╋' {
+			linePoints[p] = '╋'
+			return
+		}
+		linePoints[p] = ch
+	}
+	for _, col := range view.Columns {
+		for _, target := range col {
+			targetPos, ok := view.Positions[target.ID]
+			if !ok {
+				continue
+			}
+			targetPort := targetPos.PortIn()
+			if targetPort.Column < 0 || targetPort.Column >= len(view.Columns)-1 {
+				continue
+			}
+			xIn := columnStarts[targetPort.Column] + columnMetrics[targetPort.Column].MaxStepWidth + 2
+			for _, depID := range target.DependsOn {
+				sourcePos, ok := view.Positions[depID]
+				if !ok {
+					continue
+				}
+				sourceStep, ok := stepsByCell[sourcePos.Column][sourcePos.Row]
+				stepWidth := columnMetrics[sourcePos.Column].MaxStepWidth
+				if ok {
+					stepWidth = NewStepComponent(sourceStep, 0).PreferredWidth()
+				}
+				xOut := columnStarts[sourcePos.Column] + stepWidth
+				y := sourcePos.Row * 2
+				if y < 0 || y >= totalRows {
+					continue
+				}
+				from := xOut
+				to := xIn
+				if from > to {
+					from, to = to, from
+				}
+				for x := from; x <= to; x++ {
+					stampLine(x, y, '━')
+				}
+
+				targetY := targetPos.Row * 2
+				if targetY != y {
+					fromY := y
+					toY := targetY
+					if fromY > toY {
+						fromY, toY = toY, fromY
+					}
+					for yy := fromY; yy <= toY; yy++ {
+						stampLine(xIn, yy, '┃')
+					}
+				}
+
+				// Final leg: from in-port to the beginning of the target step block.
+				targetStepStartX := columnStarts[targetPos.Column]
+				if targetStepStartX > xIn {
+					for x := xIn; x < targetStepStartX; x++ {
+						stampLine(x, targetY, '━')
+					}
+				}
+			}
+		}
+	}
+	for p, ch := range linePoints {
+		x, y := p[0], p[1]
+		canvas[y][x] = ch
+	}
+
 	portPoints := map[[2]int]rune{}
 	for row := 0; row < view.RowCount; row++ {
 		y := row * 2
