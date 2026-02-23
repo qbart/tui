@@ -40,6 +40,22 @@ func (a ArrowComponent) Render(active bool) string {
 }
 
 func (a ArrowComponent) RenderJunction(left, right, up, down bool, active bool) string {
+	return a.renderJunctionInternal(left, right, up, down, active, 0, 0)
+}
+
+func (a ArrowComponent) RenderJunctionMarked(left, right, up, down bool, active bool) string {
+	return a.RenderJunctionWithMarker(left, right, up, down, active, '*')
+}
+
+func (a ArrowComponent) RenderJunctionWithMarker(left, right, up, down bool, active bool, marker rune) string {
+	return a.RenderJunctionWithMarkers(left, right, up, down, active, 0, marker)
+}
+
+func (a ArrowComponent) RenderJunctionWithMarkers(left, right, up, down bool, active bool, leftMarker, rightMarker rune) string {
+	return a.renderJunctionInternal(left, right, up, down, active, leftMarker, rightMarker)
+}
+
+func (a ArrowComponent) renderJunctionInternal(left, right, up, down bool, active bool, leftMarker, rightMarker rune) string {
 	if !active {
 		return strings.Repeat(" ", a.Width)
 	}
@@ -58,6 +74,7 @@ func (a ArrowComponent) RenderJunction(left, right, up, down bool, active bool) 
 		}
 	}
 	pattern[center] = []rune(a.junctionSymbol(left, right, up, down))[0]
+	a.applyMarkers(pattern, leftMarker, rightMarker)
 
 	return lipgloss.NewStyle().
 		Background(a.Background).
@@ -66,13 +83,56 @@ func (a ArrowComponent) RenderJunction(left, right, up, down bool, active bool) 
 }
 
 func (a ArrowComponent) RenderHorizontal(active bool) string {
+	return a.renderHorizontalInternal(active, 0, 0)
+}
+
+func (a ArrowComponent) RenderHorizontalMarked(active bool) string {
+	return a.RenderHorizontalWithMarker(active, '*')
+}
+
+func (a ArrowComponent) RenderHorizontalWithMarker(active bool, marker rune) string {
+	return a.RenderHorizontalWithMarkers(active, 0, marker)
+}
+
+func (a ArrowComponent) RenderHorizontalWithMarkers(active bool, leftMarker, rightMarker rune) string {
+	return a.renderHorizontalInternal(active, leftMarker, rightMarker)
+}
+
+func (a ArrowComponent) RenderMarkerOnly(active bool, marker rune) string {
 	if !active {
 		return strings.Repeat(" ", a.Width)
+	}
+	pattern := []rune(strings.Repeat(" ", a.Width))
+	if a.Width >= 3 {
+		pattern[a.Width-3] = marker
 	}
 	return lipgloss.NewStyle().
 		Background(a.Background).
 		Foreground(a.Color).
-		Render(strings.Repeat(a.symbol(), a.Width))
+		Render(string(pattern))
+}
+
+func (a ArrowComponent) renderHorizontalInternal(active bool, leftMarker, rightMarker rune) string {
+	if !active {
+		return strings.Repeat(" ", a.Width)
+	}
+	pattern := []rune(strings.Repeat(a.symbol(), a.Width))
+	a.applyMarkers(pattern, leftMarker, rightMarker)
+	return lipgloss.NewStyle().
+		Background(a.Background).
+		Foreground(a.Color).
+		Render(string(pattern))
+}
+
+func (a ArrowComponent) applyMarkers(pattern []rune, leftMarker, rightMarker rune) {
+	if leftMarker != 0 && a.Width >= 1 {
+		// Immediately after the source step.
+		pattern[0] = leftMarker
+	}
+	if rightMarker != 0 && a.Width >= 3 {
+		// 3 chars before target node.
+		pattern[a.Width-3] = rightMarker
+	}
 }
 
 func (a ArrowComponent) RenderTeeRight(active bool) string {
