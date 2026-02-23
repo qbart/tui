@@ -218,8 +218,8 @@ func renderPipelineGraph(view PipelineView) []string {
 			cellWidth := columnMetrics[col].MaxStepWidth
 			cell := blankBrick(cellWidth)
 			if step, ok := stepsByCell[col][row]; ok {
-				cellWidth = NewStepComponent(step, 0).PreferredWidth()
-				cell = NewStepComponent(step, 0).RenderBrick()
+				stepWidth := NewStepComponent(step, 0).PreferredWidth()
+				cell = NewStepComponent(step, 0).RenderBrick() + blankBrick(cellWidth-stepWidth)
 			}
 			b.WriteString(cell)
 
@@ -227,11 +227,9 @@ func renderPipelineGraph(view PipelineView) []string {
 				continue
 			}
 
-			connectorArrow := arrow
-			connectorArrow.Width = arrow.Width + (columnMetrics[col].MaxStepWidth - cellWidth)
-			connector := connectorArrow.RenderHorizontal(false)
+			connector := arrow.RenderHorizontal(false)
 			if junction, ok := connectors.rowJunction(col, row); ok {
-				connector = connectorArrow.RenderJunction(junction.Left, junction.Right, junction.Up, junction.Down, junction.active())
+				connector = arrow.RenderJunction(junction.Left, junction.Right, junction.Up, junction.Down, junction.active())
 			}
 			b.WriteString(gap)
 			b.WriteString(connector)
