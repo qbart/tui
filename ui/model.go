@@ -243,7 +243,15 @@ func renderPipelineGraph(view PipelineView) []string {
 			marker, hasMarker := connectorMarkerAt(debugOverlay.Markers, col, row)
 			junction, hasJunction := connectors.rowJunction(col, row)
 			if hasJunction {
-				if hasMarker {
+				if hasMarker && marker == '.' {
+					// Dot markers are vertical-only helper points; they do not continue right.
+					junction.Right = false
+					leftMarker := rune(0)
+					if outgoingInConnector {
+						leftMarker = '#'
+					}
+					connector = arrow.RenderJunctionWithMarkers(junction.Left, junction.Right, junction.Up, junction.Down, junction.active(), leftMarker, marker)
+				} else if hasMarker {
 					// Marker points are explicit incoming targets, always keep rightward continuity.
 					junction.Right = true
 					leftMarker := rune(0)
@@ -265,7 +273,15 @@ func renderPipelineGraph(view PipelineView) []string {
 				if hasMarker {
 					rightMarker = marker
 				}
-				connector = arrow.RenderHorizontalWithMarkers(true, leftMarker, rightMarker)
+				if hasMarker && marker == '.' {
+					// Dot markers render without rightward line.
+					if leftMarker != 0 {
+						connector = arrow.RenderHorizontalWithMarkers(true, leftMarker, 0)
+					}
+					connector = arrow.RenderMarkerOnly(true, marker)
+				} else {
+					connector = arrow.RenderHorizontalWithMarkers(true, leftMarker, rightMarker)
+				}
 			}
 			b.WriteString(gap)
 			b.WriteString(connector)
@@ -412,17 +428,23 @@ func addRoutedDependency(grid *connectorGrid, source StepPositionView, target St
 	case source.Row == target.Row:
 		addJunction(grid, targetLane, source.Row, true, true, false, false)
 	case source.Row < target.Row:
-		addJunction(grid, targetLane, source.Row, true, false, false, true)
+		addJunction(grid, targetLane, source.Row, true, true, false, true)
 		for boundary := source.Row; boundary < target.Row; boundary++ {
 			addBoundary(grid, targetLane, boundary)
 		}
-		addJunction(grid, targetLane, target.Row, false, true, true, false)
 	default:
-		addJunction(grid, targetLane, source.Row, true, false, true, false)
+		addJunction(grid, targetLane, source.Row, true, true, true, false)
 		for boundary := target.Row; boundary < source.Row; boundary++ {
 			addBoundary(grid, targetLane, boundary)
 		}
-		addJunction(grid, targetLane, target.Row, false, true, false, true)
+	}
+
+	// Always stamp final entry into the target step for this edge.
+	entryUp := source.Row > target.Row
+	entryDown := source.Row < target.Row
+	addJunction(grid, targetLane, target.Row, false, true, entryUp, entryDown)
+	if source.Row == target.Row {
+		addJunction(grid, targetLane, target.Row, true, true, false, false)
 	}
 }
 
