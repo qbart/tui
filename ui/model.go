@@ -238,23 +238,18 @@ func renderPipelineGraph(view PipelineView) []string {
 	}
 
 	// Pass 2: draw lines/ports by absolute (x,y) positions.
-	linePoints := map[[2]int]rune{}
-	stampLine := func(x, y int, ch rune) {
+	connPoints := map[[2]int]linePointConn{}
+	addConn := func(x, y int, left, right, up, down bool) {
 		if x < 0 || x >= totalWidth || y < 0 || y >= totalRows {
 			return
 		}
 		p := [2]int{x, y}
-		existing, ok := linePoints[p]
-		if !ok {
-			linePoints[p] = ch
-			return
-		}
-		// Merge simple crossings for orthogonal line intersections.
-		if (existing == '━' && ch == '┃') || (existing == '┃' && ch == '━') || existing == '╋' || ch == '╋' {
-			linePoints[p] = '╋'
-			return
-		}
-		linePoints[p] = ch
+		c := connPoints[p]
+		c.Left = c.Left || left
+		c.Right = c.Right || right
+		c.Up = c.Up || up
+		c.Down = c.Down || down
+		connPoints[p] = c
 	}
 	for _, col := range view.Columns {
 		for _, target := range col {
@@ -288,7 +283,7 @@ func renderPipelineGraph(view PipelineView) []string {
 					from, to = to, from
 				}
 				for x := from; x <= to; x++ {
-					stampLine(x, y, '━')
+					addConn(x, y, x > from, x < to, false, false)
 				}
 
 				targetY := targetPos.Row * 2
@@ -299,7 +294,7 @@ func renderPipelineGraph(view PipelineView) []string {
 						fromY, toY = toY, fromY
 					}
 					for yy := fromY; yy <= toY; yy++ {
-						stampLine(xIn, yy, '┃')
+						addConn(xIn, yy, false, false, yy > fromY, yy < toY)
 					}
 				}
 
@@ -307,15 +302,15 @@ func renderPipelineGraph(view PipelineView) []string {
 				targetStepStartX := columnStarts[targetPos.Column]
 				if targetStepStartX > xIn {
 					for x := xIn; x < targetStepStartX; x++ {
-						stampLine(x, targetY, '━')
+						addConn(x, targetY, x > xIn, x < targetStepStartX-1, false, false)
 					}
 				}
 			}
 		}
 	}
-	for p, ch := range linePoints {
+	for p, c := range connPoints {
 		x, y := p[0], p[1]
-		canvas[y][x] = ch
+		canvas[y][x] = connectorRune(c)
 	}
 
 	portPoints := map[[2]int]rune{}
@@ -330,7 +325,7 @@ func renderPipelineGraph(view PipelineView) []string {
 					x = columnStarts[col] + stepWidth
 				}
 				if x >= 0 && x < totalWidth {
-					portPoints[[2]int{x, y}] = '>'
+					portPoints[[2]int{x, y}] = '━'
 				}
 			}
 			// In port in the connector gap before the next column.
@@ -357,6 +352,35 @@ func renderPipelineGraph(view PipelineView) []string {
 	}
 
 	return rows
+}
+
+func connectorRune(c linePointConn) rune {
+	switch {
+	case c.Left && c.Right && c.Up && c.Down:
+		return '╋'
+	case c.Left && c.Right && c.Down:
+		return '┳'
+	case c.Left && c.Right && c.Up:
+		return '┻'
+	case c.Up && c.Down && c.Right:
+		return '┣'
+	case c.Up && c.Down && c.Left:
+		return '┫'
+	case c.Down && c.Right:
+		return '┏'
+	case c.Up && c.Right:
+		return '┗'
+	case c.Down && c.Left:
+		return '┓'
+	case c.Up && c.Left:
+		return '┛'
+	case c.Left || c.Right:
+		return '━'
+	case c.Up || c.Down:
+		return '┃'
+	default:
+		return ' '
+	}
 }
 
 func drawTextAt(canvas [][]rune, x, y int, text string) {
@@ -436,6 +460,13 @@ func buildHorizontalConnectorGrid(view PipelineView) horizontalConnectorGrid {
 type columnRenderMetrics struct {
 	StepCount    int
 	MaxStepWidth int
+}
+
+type linePointConn struct {
+	Left  bool
+	Right bool
+	Up    bool
+	Down  bool
 }
 
 func buildColumnRenderMetrics(columns [][]StepView) []columnRenderMetrics {
