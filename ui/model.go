@@ -243,24 +243,16 @@ func renderPipelineGraph(view PipelineView) []string {
 			marker, hasMarker := connectorMarkerAt(debugOverlay.Markers, col, row)
 			junction, hasJunction := connectors.rowJunction(col, row)
 			if hasJunction {
-				if hasMarker && marker == '.' {
-					// Dot markers are vertical-only helper points; they do not continue right.
-					junction.Right = false
+				if hasMarker || outgoingInConnector {
 					leftMarker := rune(0)
+					rightMarker := rune(0)
 					if outgoingInConnector {
 						leftMarker = '#'
 					}
-					connector = arrow.RenderJunctionWithMarkers(junction.Left, junction.Right, junction.Up, junction.Down, junction.active(), leftMarker, marker)
-				} else if hasMarker {
-					// Marker points are explicit incoming targets, always keep rightward continuity.
-					junction.Right = true
-					leftMarker := rune(0)
-					if outgoingInConnector {
-						leftMarker = '#'
+					if hasMarker {
+						rightMarker = marker
 					}
-					connector = arrow.RenderJunctionWithMarkers(junction.Left, junction.Right, junction.Up, junction.Down, junction.active(), leftMarker, marker)
-				} else if outgoingInConnector {
-					connector = arrow.RenderJunctionWithMarkers(junction.Left, junction.Right, junction.Up, junction.Down, junction.active(), '#', 0)
+					connector = arrow.RenderJunctionWithMarkers(junction.Left, junction.Right, junction.Up, junction.Down, junction.active(), leftMarker, rightMarker)
 				} else {
 					connector = arrow.RenderJunction(junction.Left, junction.Right, junction.Up, junction.Down, junction.active())
 				}
@@ -273,15 +265,7 @@ func renderPipelineGraph(view PipelineView) []string {
 				if hasMarker {
 					rightMarker = marker
 				}
-				if hasMarker && marker == '.' {
-					// Dot markers render without rightward line.
-					if leftMarker != 0 {
-						connector = arrow.RenderHorizontalWithMarkers(true, leftMarker, 0)
-					}
-					connector = arrow.RenderMarkerOnly(true, marker)
-				} else {
-					connector = arrow.RenderHorizontalWithMarkers(true, leftMarker, rightMarker)
-				}
+				connector = arrow.RenderHorizontalWithMarkers(true, leftMarker, rightMarker)
 			}
 			b.WriteString(gap)
 			b.WriteString(connector)
@@ -289,7 +273,7 @@ func renderPipelineGraph(view PipelineView) []string {
 		}
 		rows = append(rows, b.String())
 		if row < view.RowCount-1 {
-			rows = append(rows, renderPipelineSpacerRow(row, columnMetrics, arrow, connectors, debugOverlay.Boundaries))
+			rows = append(rows, renderPipelineSpacerRow(row, columnMetrics, arrow, connectors))
 		}
 	}
 
@@ -319,7 +303,7 @@ func buildColumnRenderMetrics(columns [][]StepView) []columnRenderMetrics {
 	return metrics
 }
 
-func renderPipelineSpacerRow(boundaryRow int, columnMetrics []columnRenderMetrics, arrow ArrowComponent, connectors connectorGrid, debugBoundaries map[int]map[int]bool) string {
+func renderPipelineSpacerRow(boundaryRow int, columnMetrics []columnRenderMetrics, arrow ArrowComponent, connectors connectorGrid) string {
 	const gap = ""
 	var b strings.Builder
 
@@ -329,7 +313,7 @@ func renderPipelineSpacerRow(boundaryRow int, columnMetrics []columnRenderMetric
 			continue
 		}
 		b.WriteString(gap)
-		if connectors.hasBoundaryVertical(col, boundaryRow) || hasBoundaryAt(debugBoundaries, col, boundaryRow) {
+		if connectors.hasBoundaryVertical(col, boundaryRow) {
 			b.WriteString(arrow.RenderVertical(true))
 		} else {
 			b.WriteString(arrow.RenderVertical(false))
@@ -379,92 +363,72 @@ func buildConnectorGrid(view PipelineView) connectorGrid {
 		boundaries:   map[int]map[int]bool{},
 	}
 
-	stepsByID := map[string]StepView{}
 	for _, col := range view.Columns {
-		for _, step := range col {
-			stepsByID[step.ID] = step
-		}
-	}
-
-	for _, target := range stepsByID {
-		targetPos, ok := view.Positions[target.ID]
-		if !ok {
-			continue
-		}
-		for _, depID := range target.DependsOn {
-			sourcePos, ok := view.Positions[depID]
-			if !ok {
+		for _, target := range col {
+			targetPos, ok := view.Positions[target.ID]
+			if !ok || targetPos.Column == 0 {
 				continue
 			}
-			if targetPos.Column <= sourcePos.Column {
-				continue
+			for _, depID := range target.DependsOn {
+				sourcePos, ok := view.Positions[depID]
+				if !ok || sourcePos.Column >= targetPos.Column {
+					continue
+				}
+				drawEdgeByPoints(&grid, sourcePos, targetPos)
 			}
-			addRoutedDependency(&grid, sourcePos, targetPos)
 		}
 	}
 
 	return grid
 }
 
-func addRoutedDependency(grid *connectorGrid, source StepPositionView, target StepPositionView) {
-	span := target.Column - source.Column
-	if span <= 0 {
-		return
-	}
-
-	// Adjacent-column edges have to resolve their vertical movement in the source lane.
-	if span == 1 {
-		addSourceLaneRoute(grid, source.Column, source.Row, target.Row)
-		return
-	}
-
-	// For long edges, run horizontally first and bend vertically only at the target lane.
+func drawEdgeByPoints(grid *connectorGrid, source StepPositionView, target StepPositionView) {
+	sourceLane := source.Column
 	targetLane := target.Column - 1
-	for lane := source.Column; lane < targetLane; lane++ {
-		addJunction(grid, lane, source.Row, true, true, false, false)
+	if targetLane < sourceLane {
+		return
 	}
 
 	switch {
 	case source.Row == target.Row:
-		addJunction(grid, targetLane, source.Row, true, true, false, false)
+		drawHorizontalToMarker(grid, sourceLane, targetLane, source.Row, true)
 	case source.Row < target.Row:
-		addJunction(grid, targetLane, source.Row, true, true, false, true)
-		for boundary := source.Row; boundary < target.Row; boundary++ {
-			addBoundary(grid, targetLane, boundary)
-		}
+		// # -> * (transit) at source row, then * -> * vertically at target lane.
+		drawHorizontalToMarker(grid, sourceLane, targetLane, source.Row, false)
+		drawVerticalBetweenMarkers(grid, targetLane, source.Row, target.Row)
+		addJunction(grid, targetLane, target.Row, false, true, true, false) // * -> step
 	default:
-		addJunction(grid, targetLane, source.Row, true, true, true, false)
-		for boundary := target.Row; boundary < source.Row; boundary++ {
-			addBoundary(grid, targetLane, boundary)
-		}
-	}
-
-	// Always stamp final entry into the target step for this edge.
-	entryUp := source.Row > target.Row
-	entryDown := source.Row < target.Row
-	addJunction(grid, targetLane, target.Row, false, true, entryUp, entryDown)
-	if source.Row == target.Row {
-		addJunction(grid, targetLane, target.Row, true, true, false, false)
+		// # -> . at source row, then . -> * vertically at target lane.
+		drawHorizontalToMarker(grid, sourceLane, targetLane, source.Row, false)
+		drawVerticalBetweenMarkers(grid, targetLane, source.Row, target.Row)
+		addJunction(grid, targetLane, target.Row, false, true, false, true) // * -> step
 	}
 }
 
-func addSourceLaneRoute(grid *connectorGrid, lane, sourceRow, targetRow int) {
-	switch {
-	case sourceRow == targetRow:
-		addJunction(grid, lane, sourceRow, true, true, false, false)
-	case targetRow > sourceRow:
-		addJunction(grid, lane, sourceRow, true, true, false, true)
-		for boundary := sourceRow; boundary < targetRow; boundary++ {
-			addBoundary(grid, lane, boundary)
-		}
-		addJunction(grid, lane, targetRow, false, true, true, false)
-	default:
-		addJunction(grid, lane, sourceRow, true, true, true, false)
-		for boundary := targetRow; boundary < sourceRow; boundary++ {
-			addBoundary(grid, lane, boundary)
-		}
-		addJunction(grid, lane, targetRow, false, true, false, true)
+func drawHorizontalToMarker(grid *connectorGrid, fromLane, toLane, row int, endToStep bool) {
+	for lane := fromLane; lane <= toLane; lane++ {
+		right := lane < toLane || endToStep
+		addJunction(grid, lane, row, true, right, false, false)
 	}
+}
+
+func drawVerticalBetweenMarkers(grid *connectorGrid, lane, fromRow, toRow int) {
+	if fromRow == toRow {
+		return
+	}
+	if fromRow < toRow {
+		addJunction(grid, lane, fromRow, false, false, false, true)
+		for boundary := fromRow; boundary < toRow; boundary++ {
+			addBoundary(grid, lane, boundary)
+		}
+		addJunction(grid, lane, toRow, false, false, true, false)
+		return
+	}
+	addJunction(grid, lane, fromRow, false, false, true, false)
+	for boundary := toRow; boundary < fromRow; boundary++ {
+		addBoundary(grid, lane, boundary)
+	}
+	addJunction(grid, lane, toRow, false, false, false, true)
 }
 
 func addJunction(grid *connectorGrid, lane, row int, left, right, up, down bool) {
@@ -487,54 +451,32 @@ func addBoundary(grid *connectorGrid, lane, boundaryRow int) {
 }
 
 type connectorDebugOverlay struct {
-	Markers    map[int]map[int]rune
-	Boundaries map[int]map[int]bool
+	Markers map[int]map[int]rune
 }
 
 func buildConnectorDebugOverlay(view PipelineView) connectorDebugOverlay {
 	overlay := connectorDebugOverlay{
-		Markers:    map[int]map[int]rune{},
-		Boundaries: map[int]map[int]bool{},
+		Markers: map[int]map[int]rune{},
 	}
 	for _, col := range view.Columns {
-		for _, step := range col {
-			targetPos, ok := view.Positions[step.ID]
+		for _, target := range col {
+			targetPos, ok := view.Positions[target.ID]
 			if !ok || targetPos.Column == 0 {
 				continue
 			}
-			hasIncoming := false
-			for _, depID := range step.DependsOn {
-				depPos, ok := view.Positions[depID]
-				if ok && depPos.Column < targetPos.Column {
-					hasIncoming = true
-					break
-				}
-			}
-			if !hasIncoming {
-				continue
-			}
 			lane := targetPos.Column - 1
-			if overlay.Markers[lane] == nil {
-				overlay.Markers[lane] = map[int]rune{}
-			}
+			setDebugMarker(overlay.Markers, lane, targetPos.Row, '*')
 
-			// Entry point into a step.
-			overlay.Markers[lane][targetPos.Row] = '*'
-
-			// Additional entry points below the anchor at dependency rows.
-			for _, depID := range step.DependsOn {
-				depPos, ok := view.Positions[depID]
-				if !ok || depPos.Column >= targetPos.Column {
+			for _, depID := range target.DependsOn {
+				sourcePos, ok := view.Positions[depID]
+				if !ok || sourcePos.Column >= targetPos.Column {
 					continue
 				}
-				if depPos.Row <= targetPos.Row {
-					continue
-				}
-				for boundary := targetPos.Row; boundary < depPos.Row; boundary++ {
-					addDebugBoundary(overlay.Boundaries, lane, boundary)
-				}
-				if _, exists := overlay.Markers[lane][depPos.Row]; !exists {
-					overlay.Markers[lane][depPos.Row] = '.'
+				switch {
+				case sourcePos.Row > targetPos.Row:
+					setDebugMarker(overlay.Markers, lane, sourcePos.Row, '.')
+				case sourcePos.Row < targetPos.Row:
+					setDebugMarker(overlay.Markers, lane, sourcePos.Row, '*')
 				}
 			}
 		}
@@ -551,22 +493,21 @@ func connectorMarkerAt(markers map[int]map[int]rune, lane, row int) (rune, bool)
 	return marker, ok
 }
 
-func addDebugBoundary(boundaries map[int]map[int]bool, lane, boundary int) {
-	if boundaries[lane] == nil {
-		boundaries[lane] = map[int]bool{}
+func setDebugMarker(markers map[int]map[int]rune, lane, row int, marker rune) {
+	if markers[lane] == nil {
+		markers[lane] = map[int]rune{}
 	}
-	boundaries[lane][boundary] = true
-}
-
-func hasBoundaryAt(boundaries map[int]map[int]bool, lane, boundary int) bool {
-	if boundary < 0 {
-		return false
-	}
-	laneMap, ok := boundaries[lane]
+	current, ok := markers[lane][row]
 	if !ok {
-		return false
+		markers[lane][row] = marker
+		return
 	}
-	return laneMap[boundary]
+	if current == '*' {
+		return
+	}
+	if marker == '*' {
+		markers[lane][row] = marker
+	}
 }
 
 func buildOutgoingConnectionPoints(view PipelineView) map[int]map[int]bool {
