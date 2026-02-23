@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -326,54 +327,130 @@ func (p PipelineSpec) Columns() ([][]StepSpec, map[StepID]int, error) {
 }
 
 func (p PipelineSpec) Layout() ([][]StepSpec, map[StepID]StepPosition, int, error) {
-	columns, _, err := p.Columns()
+	columns, levels, err := p.Columns()
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
 	positions := make(map[StepID]StepPosition, len(p.Steps))
 	occupied := map[int]map[int]bool{}
-	nextBaseRow := 0
 	maxRow := -1
+	nextColumnDependents := buildNextColumnDependents(p.Steps, levels)
 
 	for colIdx, colSteps := range columns {
 		if occupied[colIdx] == nil {
 			occupied[colIdx] = map[int]bool{}
 		}
 
-		sorted := append([]StepSpec(nil), colSteps...)
-		sort.SliceStable(sorted, func(i, j int) bool {
-			a := sorted[i]
-			b := sorted[j]
-			aScore := dependencyRowScore(a, positions)
-			bScore := dependencyRowScore(b, positions)
-			if aScore != bScore {
-				return aScore < bScore
+		grouped := groupStepsByDependencySignature(colSteps)
+		sort.SliceStable(grouped, func(i, j int) bool {
+			aPreferred := int(math.Round(dependencyRowScore(grouped[i][0], positions)))
+			bPreferred := int(math.Round(dependencyRowScore(grouped[j][0], positions)))
+			if aPreferred != bPreferred {
+				return aPreferred < bPreferred
 			}
-			return a.ID < b.ID
+			return grouped[i][0].ID < grouped[j][0].ID
 		})
 
-		for _, step := range sorted {
-			preferred := 0
-			if len(step.DependsOn) == 0 {
-				preferred = nextBaseRow
-			} else {
-				preferred = int(math.Round(dependencyRowScore(step, positions)))
-			}
+		columnCursor := 0
+		for _, group := range grouped {
+			sort.SliceStable(group, func(i, j int) bool {
+				aSpan := branchFootprint(group[i], nextColumnDependents)
+				bSpan := branchFootprint(group[j], nextColumnDependents)
+				if aSpan != bSpan {
+					return aSpan > bSpan
+				}
+				return group[i].ID < group[j].ID
+			})
 
-			row := findNearestFreeRow(occupied[colIdx], preferred)
-			occupied[colIdx][row] = true
-			positions[step.ID] = StepPosition{Column: colIdx, Row: row}
-			if len(step.DependsOn) == 0 && row >= nextBaseRow {
-				nextBaseRow = row + 1
+			cursor := columnCursor
+
+			for _, step := range group {
+				row := findNearestFreeRowAtOrBelow(occupied[colIdx], cursor)
+				occupied[colIdx][row] = true
+				positions[step.ID] = StepPosition{Column: colIdx, Row: row}
+
+				cursor = row + branchFootprint(step, nextColumnDependents)
+				if row > maxRow {
+					maxRow = row
+				}
 			}
-			if row > maxRow {
-				maxRow = row
-			}
+			columnCursor = cursor
 		}
 	}
 
 	return columns, positions, maxRow + 1, nil
+}
+
+func buildNextColumnDependents(steps []StepSpec, levels map[StepID]int) map[StepID][]StepID {
+	dependents := make(map[StepID][]StepID, len(steps))
+	for _, step := range steps {
+		dependents[step.ID] = []StepID{}
+	}
+
+	for _, target := range steps {
+		targetLevel, ok := levels[target.ID]
+		if !ok {
+			continue
+		}
+		for _, dep := range target.DependsOn {
+			depLevel, ok := levels[dep]
+			if !ok {
+				continue
+			}
+			if targetLevel == depLevel+1 {
+				dependents[dep] = append(dependents[dep], target.ID)
+			}
+		}
+	}
+
+	for dep := range dependents {
+		sort.SliceStable(dependents[dep], func(i, j int) bool {
+			return dependents[dep][i] < dependents[dep][j]
+		})
+	}
+
+	return dependents
+}
+
+func groupStepsByDependencySignature(colSteps []StepSpec) [][]StepSpec {
+	groups := make(map[string][]StepSpec)
+	keys := make([]string, 0, len(colSteps))
+	for _, step := range colSteps {
+		key := dependencySignature(step.DependsOn)
+		if _, ok := groups[key]; !ok {
+			keys = append(keys, key)
+		}
+		groups[key] = append(groups[key], step)
+	}
+
+	sort.Strings(keys)
+	result := make([][]StepSpec, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, groups[key])
+	}
+	return result
+}
+
+func dependencySignature(dependsOn []StepID) string {
+	if len(dependsOn) == 0 {
+		return "__root__"
+	}
+
+	parts := make([]string, 0, len(dependsOn))
+	for _, dep := range dependsOn {
+		parts = append(parts, string(dep))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
+}
+
+func branchFootprint(step StepSpec, nextColumnDependents map[StepID][]StepID) int {
+	children := nextColumnDependents[step.ID]
+	if len(children) == 0 {
+		return 1
+	}
+	return len(children)
 }
 
 func dependencyRowScore(step StepSpec, positions map[StepID]StepPosition) float64 {
@@ -413,6 +490,17 @@ func findNearestFreeRow(used map[int]bool, preferred int) int {
 		down := preferred + offset
 		if !used[down] {
 			return down
+		}
+	}
+}
+
+func findNearestFreeRowAtOrBelow(used map[int]bool, preferred int) int {
+	if preferred < 0 {
+		preferred = 0
+	}
+	for row := preferred; ; row++ {
+		if !used[row] {
+			return row
 		}
 	}
 }

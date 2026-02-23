@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -26,10 +25,13 @@ func NewModel() Model {
 	spec := core.NewPipelineSpec("sample-cicd", []core.StepSpec{
 		{ID: "checkout", JobName: "checkout"},
 		{ID: "build", JobName: "build", DependsOn: []core.StepID{"checkout"}},
+		{ID: "build-ui", JobName: "build ui", DependsOn: []core.StepID{"checkout"}},
 		{ID: "test-postresql", JobName: "test postresql", DependsOn: []core.StepID{"build"}},
 		{ID: "test-sqlite", JobName: "test sqlite", DependsOn: []core.StepID{"build"}},
 		{ID: "test-duckdb", JobName: "test duckdb", DependsOn: []core.StepID{"build"}},
 		{ID: "deploy", JobName: "deploy", DependsOn: []core.StepID{"test-postresql", "test-sqlite", "test-duckdb"}},
+		{ID: "deploy-ui", JobName: "deploy ui", DependsOn: []core.StepID{"build-ui"}},
+		{ID: "notify", JobName: "notify", DependsOn: []core.StepID{"deploy", "deploy-ui"}},
 	})
 
 	now := time.Now()
@@ -54,10 +56,13 @@ func NewModel() Model {
 		stepDurations: map[core.StepID]time.Duration{
 			"checkout":       1 * time.Second,
 			"build":          2 * time.Second,
+			"build-ui":       2 * time.Second,
 			"test-postresql": 2 * time.Second,
 			"test-sqlite":    2 * time.Second,
 			"test-duckdb":    2 * time.Second,
 			"deploy":         1 * time.Second,
+			"deploy-ui":      1 * time.Second,
+			"notify":         1 * time.Second,
 		},
 	}
 }
@@ -192,17 +197,8 @@ func renderPipelineGraph(view PipelineView) []string {
 		return []string{"(no steps)"}
 	}
 
-	columnWidths := make([]int, len(view.Columns))
-	for col := range view.Columns {
-		maxWidth := 0
-		for _, step := range view.Columns[col] {
-			w := NewStepComponent(step, 0).PreferredWidth()
-			if w > maxWidth {
-				maxWidth = w
-			}
-		}
-		columnWidths[col] = maxWidth
-	}
+	columnMetrics := buildColumnRenderMetrics(view.Columns)
+	connectors := buildConnectorLayout(view)
 
 	stepsByCell := map[int]map[int]StepView{}
 	for _, colSteps := range view.Columns {
@@ -219,13 +215,11 @@ func renderPipelineGraph(view PipelineView) []string {
 	for row := 0; row < view.RowCount; row++ {
 		var b strings.Builder
 		for col := 0; col < len(view.Columns); col++ {
-			cell := blankBrick(columnWidths[col])
-			var source StepView
-			var hasSource bool
+			cellWidth := columnMetrics[col].MaxStepWidth
+			cell := blankBrick(cellWidth)
 			if step, ok := stepsByCell[col][row]; ok {
-				source = step
-				hasSource = true
-				cell = NewStepComponent(source, 0).RenderBrick()
+				cellWidth = NewStepComponent(step, 0).PreferredWidth()
+				cell = NewStepComponent(step, 0).RenderBrick()
 			}
 			b.WriteString(cell)
 
@@ -233,15 +227,11 @@ func renderPipelineGraph(view PipelineView) []string {
 				continue
 			}
 
-			connector := arrow.RenderHorizontal(false)
-			if hasSource {
-				if c, ok := sourceRowConnector(source, view.Columns[col+1], view.Positions, arrow); ok {
-					connector = c
-				}
-			} else {
-				if c, ok := targetBranchRowConnector(row, view.Columns[col], view.Columns[col+1], view.Positions, arrow); ok {
-					connector = c
-				}
+			connectorArrow := arrow
+			connectorArrow.Width = arrow.Width + (columnMetrics[col].MaxStepWidth - cellWidth)
+			connector := connectorArrow.RenderHorizontal(false)
+			if junction, ok := connectors.rowJunction(col, row); ok {
+				connector = connectorArrow.RenderJunction(junction.Left, junction.Right, junction.Up, junction.Down, junction.active())
 			}
 			b.WriteString(gap)
 			b.WriteString(connector)
@@ -249,25 +239,48 @@ func renderPipelineGraph(view PipelineView) []string {
 		}
 		rows = append(rows, b.String())
 		if row < view.RowCount-1 {
-			rows = append(rows, renderPipelineSpacerRow(row, view, columnWidths, arrow))
+			rows = append(rows, renderPipelineSpacerRow(row, columnMetrics, arrow, connectors))
 		}
 	}
 
 	return rows
 }
 
-func renderPipelineSpacerRow(boundaryRow int, view PipelineView, columnWidths []int, arrow ArrowComponent) string {
+type columnRenderMetrics struct {
+	StepCount    int
+	MaxStepWidth int
+}
+
+func buildColumnRenderMetrics(columns [][]StepView) []columnRenderMetrics {
+	metrics := make([]columnRenderMetrics, len(columns))
+	for col := range columns {
+		maxWidth := 0
+		for _, step := range columns[col] {
+			w := NewStepComponent(step, 0).PreferredWidth()
+			if w > maxWidth {
+				maxWidth = w
+			}
+		}
+		metrics[col] = columnRenderMetrics{
+			StepCount:    len(columns[col]),
+			MaxStepWidth: maxWidth,
+		}
+	}
+	return metrics
+}
+
+func renderPipelineSpacerRow(boundaryRow int, columnMetrics []columnRenderMetrics, arrow ArrowComponent, connectors connectorLayout) string {
 	const gap = ""
 	var b strings.Builder
 
-	for col := 0; col < len(view.Columns); col++ {
-		b.WriteString(blankBrick(columnWidths[col]))
-		if col == len(view.Columns)-1 {
+	for col := 0; col < len(columnMetrics); col++ {
+		b.WriteString(blankBrick(columnMetrics[col].MaxStepWidth))
+		if col == len(columnMetrics)-1 {
 			continue
 		}
 		b.WriteString(gap)
-		if c, ok := spacerBoundaryConnector(boundaryRow, view.Columns[col], view.Columns[col+1], view.Positions, arrow); ok {
-			b.WriteString(c)
+		if connectors.hasBoundaryVertical(col, boundaryRow) {
+			b.WriteString(arrow.RenderVertical(true))
 		} else {
 			b.WriteString(arrow.RenderVertical(false))
 		}
@@ -277,68 +290,118 @@ func renderPipelineSpacerRow(boundaryRow int, view PipelineView, columnWidths []
 	return b.String()
 }
 
-func sourceRowConnector(source StepView, nextCol []StepView, positions map[string]StepPositionView, arrow ArrowComponent) (string, bool) {
-	targetRows := dependentRowsForSource(source, nextCol, positions)
-	if len(targetRows) == 0 {
-		return "", false
-	}
-	if len(targetRows) == 1 {
-		return arrow.RenderHorizontal(true), true
-	}
-	return arrow.RenderSplit(true), true
+type connectorJunction struct {
+	Left  bool
+	Right bool
+	Up    bool
+	Down  bool
 }
 
-func targetBranchRowConnector(row int, prevCol []StepView, nextCol []StepView, positions map[string]StepPositionView, arrow ArrowComponent) (string, bool) {
-	for _, source := range prevCol {
-		targetRows := dependentRowsForSource(source, nextCol, positions)
-		if len(targetRows) <= 1 {
+func (j connectorJunction) active() bool {
+	return j.Left || j.Right || j.Up || j.Down
+}
+
+type connectorLayout struct {
+	rowJunctions map[int]map[int]connectorJunction
+	boundaries   map[int]map[int]bool
+}
+
+func (c connectorLayout) rowJunction(lane, row int) (connectorJunction, bool) {
+	laneMap, ok := c.rowJunctions[lane]
+	if !ok {
+		return connectorJunction{}, false
+	}
+	j, ok := laneMap[row]
+	return j, ok
+}
+
+func (c connectorLayout) hasBoundaryVertical(lane, boundaryRow int) bool {
+	laneMap, ok := c.boundaries[lane]
+	if !ok {
+		return false
+	}
+	return laneMap[boundaryRow]
+}
+
+func buildConnectorLayout(view PipelineView) connectorLayout {
+	layout := connectorLayout{
+		rowJunctions: map[int]map[int]connectorJunction{},
+		boundaries:   map[int]map[int]bool{},
+	}
+
+	stepsByID := map[string]StepView{}
+	for _, col := range view.Columns {
+		for _, step := range col {
+			stepsByID[step.ID] = step
+		}
+	}
+
+	for _, target := range stepsByID {
+		targetPos, ok := view.Positions[target.ID]
+		if !ok {
 			continue
 		}
-		for i, tr := range targetRows {
-			if tr != row {
+		for _, depID := range target.DependsOn {
+			sourcePos, ok := view.Positions[depID]
+			if !ok {
 				continue
 			}
-			if i == len(targetRows)-1 {
-				return arrow.RenderCornerRight(true), true
+			if targetPos.Column <= sourcePos.Column {
+				continue
 			}
-			return arrow.RenderTeeRight(true), true
+			addRoutedDependency(&layout, sourcePos, targetPos)
 		}
 	}
-	return "", false
+
+	return layout
 }
 
-func spacerBoundaryConnector(boundaryRow int, prevCol []StepView, nextCol []StepView, positions map[string]StepPositionView, arrow ArrowComponent) (string, bool) {
-	for _, source := range prevCol {
-		sourcePos, ok := positions[source.ID]
-		if !ok {
+func addRoutedDependency(layout *connectorLayout, source StepPositionView, target StepPositionView) {
+	for lane := source.Column; lane < target.Column; lane++ {
+		if lane == source.Column {
+			addSourceLaneRoute(layout, lane, source.Row, target.Row)
 			continue
 		}
-		targetRows := dependentRowsForSource(source, nextCol, positions)
-		if len(targetRows) <= 1 {
-			continue
-		}
-		last := targetRows[len(targetRows)-1]
-		if boundaryRow >= sourcePos.Row && boundaryRow < last {
-			return arrow.RenderVertical(true), true
-		}
+		addJunction(layout, lane, target.Row, true, true, false, false)
 	}
-	return "", false
 }
 
-func dependentRowsForSource(source StepView, nextCol []StepView, positions map[string]StepPositionView) []int {
-	rows := make([]int, 0)
-	for _, target := range nextCol {
-		if !dependsOn(target, source.ID) {
-			continue
+func addSourceLaneRoute(layout *connectorLayout, lane, sourceRow, targetRow int) {
+	switch {
+	case sourceRow == targetRow:
+		addJunction(layout, lane, sourceRow, true, true, false, false)
+	case targetRow > sourceRow:
+		addJunction(layout, lane, sourceRow, true, true, false, true)
+		for boundary := sourceRow; boundary < targetRow; boundary++ {
+			addBoundary(layout, lane, boundary)
 		}
-		pos, ok := positions[target.ID]
-		if !ok {
-			continue
+		addJunction(layout, lane, targetRow, false, true, true, false)
+	default:
+		addJunction(layout, lane, sourceRow, true, true, true, false)
+		for boundary := targetRow; boundary < sourceRow; boundary++ {
+			addBoundary(layout, lane, boundary)
 		}
-		rows = append(rows, pos.Row)
+		addJunction(layout, lane, targetRow, false, true, false, true)
 	}
-	sort.Ints(rows)
-	return rows
+}
+
+func addJunction(layout *connectorLayout, lane, row int, left, right, up, down bool) {
+	if layout.rowJunctions[lane] == nil {
+		layout.rowJunctions[lane] = map[int]connectorJunction{}
+	}
+	current := layout.rowJunctions[lane][row]
+	current.Left = current.Left || left
+	current.Right = current.Right || right
+	current.Up = current.Up || up
+	current.Down = current.Down || down
+	layout.rowJunctions[lane][row] = current
+}
+
+func addBoundary(layout *connectorLayout, lane, boundaryRow int) {
+	if layout.boundaries[lane] == nil {
+		layout.boundaries[lane] = map[int]bool{}
+	}
+	layout.boundaries[lane][boundaryRow] = true
 }
 
 func renderFooter(width int, text string) string {

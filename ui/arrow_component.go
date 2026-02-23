@@ -39,6 +39,32 @@ func (a ArrowComponent) Render(active bool) string {
 	return a.RenderHorizontal(active)
 }
 
+func (a ArrowComponent) RenderJunction(left, right, up, down bool, active bool) string {
+	if !active {
+		return strings.Repeat(" ", a.Width)
+	}
+	pattern := []rune(strings.Repeat(" ", a.Width))
+	center := a.centerIndex()
+	h := []rune(a.symbol())[0]
+
+	if left {
+		for i := 0; i < center; i++ {
+			pattern[i] = h
+		}
+	}
+	if right {
+		for i := center + 1; i < len(pattern); i++ {
+			pattern[i] = h
+		}
+	}
+	pattern[center] = []rune(a.junctionSymbol(left, right, up, down))[0]
+
+	return lipgloss.NewStyle().
+		Background(a.Background).
+		Foreground(a.Color).
+		Render(string(pattern))
+}
+
 func (a ArrowComponent) RenderHorizontal(active bool) string {
 	if !active {
 		return strings.Repeat(" ", a.Width)
@@ -53,33 +79,28 @@ func (a ArrowComponent) RenderTeeRight(active bool) string {
 	if !active {
 		return strings.Repeat(" ", a.Width)
 	}
-	return a.renderCenteredRight(a.teeRightSymbol())
+	return a.RenderJunction(false, true, true, true, true)
 }
 
 func (a ArrowComponent) RenderVertical(active bool) string {
 	if !active {
 		return strings.Repeat(" ", a.Width)
 	}
-	return a.renderCentered(a.verticalSymbol())
+	return a.RenderJunction(false, false, true, true, true)
 }
 
 func (a ArrowComponent) RenderSplit(active bool) string {
 	if !active {
 		return strings.Repeat(" ", a.Width)
 	}
-	pattern := []rune(strings.Repeat(a.symbol(), a.Width))
-	pattern[a.centerIndex()] = []rune(a.splitSymbol())[0]
-	return lipgloss.NewStyle().
-		Background(a.Background).
-		Foreground(a.Color).
-		Render(string(pattern))
+	return a.RenderJunction(true, true, false, true, true)
 }
 
 func (a ArrowComponent) RenderCornerRight(active bool) string {
 	if !active {
 		return strings.Repeat(" ", a.Width)
 	}
-	return a.renderCenteredRight(a.cornerRightSymbol())
+	return a.RenderJunction(false, true, true, false, true)
 }
 
 func (a ArrowComponent) symbol() string {
@@ -118,6 +139,15 @@ func (a ArrowComponent) splitSymbol() string {
 	}
 }
 
+func (a ArrowComponent) splitUpSymbol() string {
+	switch a.Type {
+	case ArrowTypeDashed:
+		return "┷"
+	default:
+		return "┻"
+	}
+}
+
 func (a ArrowComponent) cornerRightSymbol() string {
 	switch a.Type {
 	case ArrowTypeDashed:
@@ -127,31 +157,53 @@ func (a ArrowComponent) cornerRightSymbol() string {
 	}
 }
 
+func (a ArrowComponent) junctionSymbol(left, right, up, down bool) string {
+	switch {
+	case left && right && up && down:
+		if a.Type == ArrowTypeDashed {
+			return "╂"
+		}
+		return "╋"
+	case left && right && down:
+		return a.splitSymbol()
+	case left && right && up:
+		return a.splitUpSymbol()
+	case up && down && right:
+		return a.teeRightSymbol()
+	case up && down && left:
+		if a.Type == ArrowTypeDashed {
+			return "┨"
+		}
+		return "┫"
+	case up && right:
+		return a.cornerRightSymbol()
+	case down && right:
+		if a.Type == ArrowTypeDashed {
+			return "┎"
+		}
+		return "┏"
+	case up && left:
+		if a.Type == ArrowTypeDashed {
+			return "┚"
+		}
+		return "┛"
+	case down && left:
+		if a.Type == ArrowTypeDashed {
+			return "┒"
+		}
+		return "┓"
+	case up || down:
+		return a.verticalSymbol()
+	case left || right:
+		return a.symbol()
+	default:
+		return " "
+	}
+}
+
 func (a ArrowComponent) centerIndex() int {
 	if a.Width <= 0 {
 		return 0
 	}
 	return a.Width / 2
-}
-
-func (a ArrowComponent) renderCentered(symbol string) string {
-	pattern := []rune(strings.Repeat(" ", a.Width))
-	pattern[a.centerIndex()] = []rune(symbol)[0]
-	return lipgloss.NewStyle().
-		Background(a.Background).
-		Foreground(a.Color).
-		Render(string(pattern))
-}
-
-func (a ArrowComponent) renderCenteredRight(symbol string) string {
-	pattern := []rune(strings.Repeat(" ", a.Width))
-	center := a.centerIndex()
-	pattern[center] = []rune(symbol)[0]
-	for i := center + 1; i < len(pattern); i++ {
-		pattern[i] = []rune(a.symbol())[0]
-	}
-	return lipgloss.NewStyle().
-		Background(a.Background).
-		Foreground(a.Color).
-		Render(string(pattern))
 }
