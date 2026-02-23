@@ -196,6 +196,24 @@ func renderPipelineGraph(view PipelineView) []string {
 	}
 
 	columnMetrics := buildColumnRenderMetrics(view.Columns)
+	outgoing := buildOutgoingConnectionPoints(view)
+	incoming := buildIncomingPortPoints(view)
+	const gapWidth = 5
+
+	columnStarts := make([]int, len(view.Columns))
+	totalWidth := 0
+	for col := 0; col < len(view.Columns); col++ {
+		columnStarts[col] = totalWidth
+		totalWidth += columnMetrics[col].MaxStepWidth
+		if col < len(view.Columns)-1 {
+			totalWidth += gapWidth
+		}
+	}
+	totalRows := view.RowCount*2 - 1
+	canvas := make([][]rune, totalRows)
+	for y := 0; y < totalRows; y++ {
+		canvas[y] = []rune(strings.Repeat(" ", totalWidth))
+	}
 
 	stepsByCell := map[int]map[int]StepView{}
 	for _, colSteps := range view.Columns {
@@ -208,30 +226,131 @@ func renderPipelineGraph(view PipelineView) []string {
 		}
 	}
 
-	rows := make([]string, 0, view.RowCount)
+	// Pass 1: place step text at absolute positions.
 	for row := 0; row < view.RowCount; row++ {
-		var b strings.Builder
+		y := row * 2
 		for col := 0; col < len(view.Columns); col++ {
-			cellWidth := columnMetrics[col].MaxStepWidth
-			cell := blankBrick(cellWidth)
+			x := columnStarts[col]
 			if step, ok := stepsByCell[col][row]; ok {
-				stepWidth := NewStepComponent(step, 0).PreferredWidth()
-				cell = NewStepComponent(step, 0).RenderBrick() + blankBrick(cellWidth-stepWidth)
+				drawTextAt(canvas, x, y, plainStepLabel(step))
 			}
-			b.WriteString(cell)
-
-			if col == len(view.Columns)-1 {
-				continue
-			}
-			b.WriteString(strings.Repeat(" ", 5))
-		}
-		rows = append(rows, b.String())
-		if row < view.RowCount-1 {
-			rows = append(rows, "")
 		}
 	}
 
+	// Pass 2: draw ports by absolute (x,y) positions only.
+	portPoints := map[[2]int]rune{}
+	for row := 0; row < view.RowCount; row++ {
+		y := row * 2
+		for col := 0; col < len(view.Columns); col++ {
+			// Out port on source step row.
+			if hasOutgoingMarker(outgoing, col, row) {
+				x := columnStarts[col] + columnMetrics[col].MaxStepWidth
+				if step, ok := stepsByCell[col][row]; ok {
+					stepWidth := NewStepComponent(step, 0).PreferredWidth()
+					x = columnStarts[col] + stepWidth
+				}
+				if x >= 0 && x < totalWidth {
+					portPoints[[2]int{x, y}] = '>'
+				}
+			}
+			// In port in the connector gap before the next column.
+			if col < len(view.Columns)-1 && hasIncomingMarker(incoming, col, row) {
+				x := columnStarts[col] + columnMetrics[col].MaxStepWidth + 2
+				if x >= 0 && x < totalWidth {
+					portPoints[[2]int{x, y}] = '*'
+				}
+			}
+		}
+	}
+
+	for y := 0; y < totalRows; y++ {
+		for x := 0; x < totalWidth; x++ {
+			if ch, ok := portPoints[[2]int{x, y}]; ok {
+				canvas[y][x] = ch
+			}
+		}
+	}
+
+	rows := make([]string, 0, totalRows)
+	for y := 0; y < totalRows; y++ {
+		rows = append(rows, string(canvas[y]))
+	}
+
 	return rows
+}
+
+func drawTextAt(canvas [][]rune, x, y int, text string) {
+	if y < 0 || y >= len(canvas) || x >= len(canvas[y]) {
+		return
+	}
+	runes := []rune(text)
+	for i, ch := range runes {
+		xx := x + i
+		if xx < 0 || xx >= len(canvas[y]) {
+			continue
+		}
+		canvas[y][xx] = ch
+	}
+}
+
+func plainStepLabel(step StepView) string {
+	iconPart := ""
+	if step.Icon != "" {
+		iconPart = step.Icon + " "
+	}
+	return " " + iconPart + step.JobName + " "
+}
+
+type horizontalConnectorGrid struct {
+	lines map[int]map[int]bool
+}
+
+func (g horizontalConnectorGrid) has(lane, row int) bool {
+	laneRows, ok := g.lines[lane]
+	if !ok {
+		return false
+	}
+	return laneRows[row]
+}
+
+func buildHorizontalConnectorGrid(view PipelineView) horizontalConnectorGrid {
+	grid := horizontalConnectorGrid{lines: map[int]map[int]bool{}}
+
+	stepsByID := map[string]StepView{}
+	for _, col := range view.Columns {
+		for _, step := range col {
+			stepsByID[step.ID] = step
+		}
+	}
+
+	for _, target := range stepsByID {
+		targetPos, ok := view.Positions[target.ID]
+		if !ok {
+			continue
+		}
+		targetPort := targetPos.PortIn()
+		for _, depID := range target.DependsOn {
+			sourcePos, ok := view.Positions[depID]
+			if !ok {
+				continue
+			}
+			sourcePort := sourcePos.PortOut()
+			row := sourcePort.Row
+			from := sourcePort.Column
+			to := targetPort.Column
+			if to < from {
+				continue
+			}
+			for lane := from; lane <= to; lane++ {
+				if grid.lines[lane] == nil {
+					grid.lines[lane] = map[int]bool{}
+				}
+				grid.lines[lane][row] = true
+			}
+		}
+	}
+
+	return grid
 }
 
 type columnRenderMetrics struct {
@@ -488,6 +607,35 @@ func buildOutgoingConnectionPoints(view PipelineView) map[int]map[int]bool {
 }
 
 func hasOutgoingMarker(markers map[int]map[int]bool, lane, row int) bool {
+	laneMap, ok := markers[lane]
+	if !ok {
+		return false
+	}
+	return laneMap[row]
+}
+
+func buildIncomingPortPoints(view PipelineView) map[int]map[int]bool {
+	incoming := map[int]map[int]bool{}
+	for _, col := range view.Columns {
+		for _, target := range col {
+			targetPos, ok := view.Positions[target.ID]
+			if !ok || targetPos.Column == 0 {
+				continue
+			}
+			if len(target.DependsOn) == 0 {
+				continue
+			}
+			port := targetPos.PortIn()
+			if incoming[port.Column] == nil {
+				incoming[port.Column] = map[int]bool{}
+			}
+			incoming[port.Column][port.Row] = true
+		}
+	}
+	return incoming
+}
+
+func hasIncomingMarker(markers map[int]map[int]bool, lane, row int) bool {
 	laneMap, ok := markers[lane]
 	if !ok {
 		return false

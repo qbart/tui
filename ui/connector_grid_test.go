@@ -146,7 +146,7 @@ func TestConnectorGrid_EqualMergeProducesCross(t *testing.T) {
 	}
 }
 
-func TestRenderPipelineGraph_SampleContainsOnlySteps(t *testing.T) {
+func TestRenderPipelineGraph_SampleContainsOutPortMarkersOnly(t *testing.T) {
 	spec := core.NewPipelineSpec("sample-cicd", []core.StepSpec{
 		{ID: "checkout", JobName: "checkout"},
 		{ID: "build", JobName: "build", DependsOn: []core.StepID{"checkout"}},
@@ -166,7 +166,13 @@ func TestRenderPipelineGraph_SampleContainsOnlySteps(t *testing.T) {
 
 	lines := renderPipelineGraph(view)
 	raw := strings.Join(lines, "\n")
-	if strings.ContainsAny(raw, "┃━┣┫┳┻┗┏╋*#.") {
-		t.Fatalf("expected step-only rendering without connectors/markers, got %q", raw)
+	if !strings.Contains(raw, ">") {
+		t.Fatalf("expected out-port markers in rendered graph, got %q", raw)
+	}
+	if !strings.Contains(raw, "*") {
+		t.Fatalf("expected in-port markers in rendered graph, got %q", raw)
+	}
+	if strings.ContainsAny(raw, "┃━┣┫┳┻┗┏╋#.") {
+		t.Fatalf("expected no connector/old debug glyphs except '*' in-ports, got %q", raw)
 	}
 }

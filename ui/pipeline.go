@@ -16,10 +16,10 @@ type StepPositionView struct {
 }
 
 func (v StepPositionView) PortIn() StepPositionView {
-	return StepPositionView{v.Column - 2, v.Row, v.Width}
+	return StepPositionView{v.Column - 1, v.Row, v.Width}
 }
 func (v StepPositionView) PortOut() StepPositionView {
-	return StepPositionView{v.Column + 1, v.Row, v.Width}
+	return StepPositionView{v.Column, v.Row, v.Width}
 }
 
 type PipelineView struct {
