@@ -191,16 +191,11 @@ func renderPipelineGraph(view PipelineView) []string {
 		return []string{"(no steps)"}
 	}
 
-	const gap = ""
-	arrow := NewArrowComponent(5, ArrowTypeSolid, theme.ArrowColor, theme.ContentBackground)
 	if view.RowCount == 0 {
 		return []string{"(no steps)"}
 	}
 
 	columnMetrics := buildColumnRenderMetrics(view.Columns)
-	connectors := buildConnectorGrid(view)
-	debugOverlay := buildConnectorDebugOverlay(view)
-	outgoingMarkers := buildOutgoingConnectionPoints(view)
 
 	stepsByCell := map[int]map[int]StepView{}
 	for _, colSteps := range view.Columns {
@@ -217,63 +212,22 @@ func renderPipelineGraph(view PipelineView) []string {
 	for row := 0; row < view.RowCount; row++ {
 		var b strings.Builder
 		for col := 0; col < len(view.Columns); col++ {
-			hasOutgoing := hasOutgoingMarker(outgoingMarkers, col, row)
-			outgoingInConnector := hasOutgoing
 			cellWidth := columnMetrics[col].MaxStepWidth
 			cell := blankBrick(cellWidth)
 			if step, ok := stepsByCell[col][row]; ok {
 				stepWidth := NewStepComponent(step, 0).PreferredWidth()
-				cell = NewStepComponent(step, 0).RenderBrick()
-				pad := cellWidth - stepWidth
-				if hasOutgoing && pad > 0 {
-					// Keep outgoing marker tied to this specific step, not the column max width.
-					cell += "#" + strings.Repeat("━", max(pad-1, 0))
-					outgoingInConnector = false
-				} else {
-					cell += blankBrick(pad)
-				}
+				cell = NewStepComponent(step, 0).RenderBrick() + blankBrick(cellWidth-stepWidth)
 			}
 			b.WriteString(cell)
 
 			if col == len(view.Columns)-1 {
 				continue
 			}
-
-			connector := arrow.RenderHorizontal(false)
-			marker, hasMarker := connectorMarkerAt(debugOverlay.Markers, col, row)
-			junction, hasJunction := connectors.rowJunction(col, row)
-			if hasJunction {
-				if hasMarker || outgoingInConnector {
-					leftMarker := rune(0)
-					rightMarker := rune(0)
-					if outgoingInConnector {
-						leftMarker = '#'
-					}
-					if hasMarker {
-						rightMarker = marker
-					}
-					connector = arrow.RenderJunctionWithMarkers(junction.Left, junction.Right, junction.Up, junction.Down, junction.active(), leftMarker, rightMarker)
-				} else {
-					connector = arrow.RenderJunction(junction.Left, junction.Right, junction.Up, junction.Down, junction.active())
-				}
-			} else if hasMarker || outgoingInConnector {
-				leftMarker := rune(0)
-				rightMarker := rune(0)
-				if outgoingInConnector {
-					leftMarker = '#'
-				}
-				if hasMarker {
-					rightMarker = marker
-				}
-				connector = arrow.RenderHorizontalWithMarkers(true, leftMarker, rightMarker)
-			}
-			b.WriteString(gap)
-			b.WriteString(connector)
-			b.WriteString(gap)
+			b.WriteString(strings.Repeat(" ", 5))
 		}
 		rows = append(rows, b.String())
 		if row < view.RowCount-1 {
-			rows = append(rows, renderPipelineSpacerRow(row, columnMetrics, arrow, connectors))
+			rows = append(rows, "")
 		}
 	}
 

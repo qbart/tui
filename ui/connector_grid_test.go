@@ -146,7 +146,7 @@ func TestConnectorGrid_EqualMergeProducesCross(t *testing.T) {
 	}
 }
 
-func TestRenderPipelineGraph_SampleContainsKeyJunctionGlyphs(t *testing.T) {
+func TestRenderPipelineGraph_SampleContainsOnlySteps(t *testing.T) {
 	spec := core.NewPipelineSpec("sample-cicd", []core.StepSpec{
 		{ID: "checkout", JobName: "checkout"},
 		{ID: "build", JobName: "build", DependsOn: []core.StepID{"checkout"}},
@@ -166,18 +166,7 @@ func TestRenderPipelineGraph_SampleContainsKeyJunctionGlyphs(t *testing.T) {
 
 	lines := renderPipelineGraph(view)
 	raw := strings.Join(lines, "\n")
-	got := strings.ReplaceAll(raw, "*", "")
-
-	if !strings.Contains(got, "┃") {
-		t.Fatalf("expected vertical connector in rendered graph")
-	}
-	if !strings.Contains(raw, "*") {
-		t.Fatalf("expected incoming anchor markers in rendered graph")
-	}
-	if !strings.Contains(raw, ".") {
-		t.Fatalf("expected dependency-row dot markers in rendered graph")
-	}
-	if !strings.Contains(raw, "#") {
-		t.Fatalf("expected outgoing connection markers in rendered graph")
+	if strings.ContainsAny(raw, "┃━┣┫┳┻┗┏╋*#.") {
+		t.Fatalf("expected step-only rendering without connectors/markers, got %q", raw)
 	}
 }
