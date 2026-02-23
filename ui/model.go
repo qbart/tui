@@ -227,7 +227,7 @@ func renderPipelineGraph(view PipelineView) []string {
 				pad := cellWidth - stepWidth
 				if hasOutgoing && pad > 0 {
 					// Keep outgoing marker tied to this specific step, not the column max width.
-					cell += "#" + blankBrick(pad-1)
+					cell += "#" + strings.Repeat("━", max(pad-1, 0))
 					outgoingInConnector = false
 				} else {
 					cell += blankBrick(pad)
