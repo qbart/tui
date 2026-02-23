@@ -84,14 +84,29 @@ func TestConnectorGrid_LongEdgeAcrossColumns(t *testing.T) {
 		t.Fatalf("expected long edge across columns, source=%+v target=%+v", sourcePos, targetPos)
 	}
 
-	intermediateLane := sourcePos.Column + 1
-	j, ok := grid.rowJunction(intermediateLane, targetPos.Row)
-	if !ok {
-		t.Fatalf("missing intermediate lane junction at row %d", targetPos.Row)
+	targetLane := targetPos.Column - 1
+	if targetLane <= sourcePos.Column {
+		t.Fatalf("expected distinct target lane for long edge")
 	}
-	if !j.Left || !j.Right {
-		t.Fatalf("expected pass-through in intermediate lane, got %+v", j)
+	for lane := sourcePos.Column + 1; lane < targetLane; lane++ {
+		j, ok := grid.rowJunction(lane, sourcePos.Row)
+		if !ok {
+			t.Fatalf("missing pass-through lane junction at lane=%d row=%d", lane, sourcePos.Row)
+		}
+		if !j.Left || !j.Right {
+			t.Fatalf("expected pass-through in intermediate lane, got %+v", j)
+		}
 	}
+	if !grid.hasBoundaryVertical(targetLane, min(sourcePos.Row, targetPos.Row)) {
+		t.Fatalf("expected vertical bend at target lane")
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func TestConnectorGrid_EqualMergeProducesCross(t *testing.T) {

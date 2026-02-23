@@ -242,11 +242,6 @@ func renderPipelineGraph(view PipelineView) []string {
 			connector := arrow.RenderHorizontal(false)
 			marker, hasMarker := connectorMarkerAt(debugOverlay.Markers, col, row)
 			junction, hasJunction := connectors.rowJunction(col, row)
-			if hasDebugVerticalAtRow(debugOverlay.Boundaries, col, row) {
-				junction.Up = junction.Up || hasBoundaryAt(debugOverlay.Boundaries, col, row-1)
-				junction.Down = junction.Down || hasBoundaryAt(debugOverlay.Boundaries, col, row)
-				hasJunction = junction.active()
-			}
 			if hasJunction {
 				if hasMarker {
 					// Marker points are explicit incoming targets, always keep rightward continuity.
@@ -396,12 +391,38 @@ func buildConnectorGrid(view PipelineView) connectorGrid {
 }
 
 func addRoutedDependency(grid *connectorGrid, source StepPositionView, target StepPositionView) {
-	for lane := source.Column; lane < target.Column; lane++ {
-		if lane == source.Column {
-			addSourceLaneRoute(grid, lane, source.Row, target.Row)
-			continue
+	span := target.Column - source.Column
+	if span <= 0 {
+		return
+	}
+
+	// Adjacent-column edges have to resolve their vertical movement in the source lane.
+	if span == 1 {
+		addSourceLaneRoute(grid, source.Column, source.Row, target.Row)
+		return
+	}
+
+	// For long edges, run horizontally first and bend vertically only at the target lane.
+	targetLane := target.Column - 1
+	for lane := source.Column; lane < targetLane; lane++ {
+		addJunction(grid, lane, source.Row, true, true, false, false)
+	}
+
+	switch {
+	case source.Row == target.Row:
+		addJunction(grid, targetLane, source.Row, true, true, false, false)
+	case source.Row < target.Row:
+		addJunction(grid, targetLane, source.Row, true, false, false, true)
+		for boundary := source.Row; boundary < target.Row; boundary++ {
+			addBoundary(grid, targetLane, boundary)
 		}
-		addJunction(grid, lane, target.Row, true, true, false, false)
+		addJunction(grid, targetLane, target.Row, false, true, true, false)
+	default:
+		addJunction(grid, targetLane, source.Row, true, false, true, false)
+		for boundary := target.Row; boundary < source.Row; boundary++ {
+			addBoundary(grid, targetLane, boundary)
+		}
+		addJunction(grid, targetLane, target.Row, false, true, false, true)
 	}
 }
 
@@ -524,10 +545,6 @@ func hasBoundaryAt(boundaries map[int]map[int]bool, lane, boundary int) bool {
 		return false
 	}
 	return laneMap[boundary]
-}
-
-func hasDebugVerticalAtRow(boundaries map[int]map[int]bool, lane, row int) bool {
-	return hasBoundaryAt(boundaries, lane, row-1) || hasBoundaryAt(boundaries, lane, row)
 }
 
 func buildOutgoingConnectionPoints(view PipelineView) map[int]map[int]bool {
