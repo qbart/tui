@@ -14,6 +14,13 @@ type StepPositionView struct {
 	Row    int
 }
 
+func (v StepPositionView) PortIn() StepPositionView {
+	return StepPositionView{v.Column - 2, v.Row}
+}
+func (v StepPositionView) PortOut() StepPositionView {
+	return StepPositionView{v.Column + 1, v.Row}
+}
+
 type PipelineView struct {
 	Columns   [][]StepView
 	Positions map[string]StepPositionView
