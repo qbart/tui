@@ -166,16 +166,13 @@ func TestRenderPipelineGraph_SampleContainsPortLines(t *testing.T) {
 
 	lines := renderPipelineGraph(view)
 	raw := strings.Join(lines, "\n")
-	if !strings.Contains(raw, "*") {
-		t.Fatalf("expected in-port markers in rendered graph, got %q", raw)
-	}
 	if !strings.Contains(raw, "━") {
 		t.Fatalf("expected horizontal lines from out to in ports, got %q", raw)
 	}
 	if !strings.Contains(raw, "┃") {
 		t.Fatalf("expected vertical lines from out to in ports, got %q", raw)
 	}
-	if strings.ContainsAny(raw, "#.") {
-		t.Fatalf("expected no debug marker glyphs, got %q", raw)
+	if strings.ContainsAny(raw, "*>#.") {
+		t.Fatalf("expected no marker glyphs, got %q", raw)
 	}
 }

@@ -196,8 +196,6 @@ func renderPipelineGraph(view PipelineView) []string {
 	}
 
 	columnMetrics := buildColumnRenderMetrics(view.Columns)
-	outgoing := buildOutgoingConnectionPoints(view)
-	incoming := buildIncomingPortPoints(view)
 	const gapWidth = 5
 
 	columnStarts := make([]int, len(view.Columns))
@@ -311,39 +309,6 @@ func renderPipelineGraph(view PipelineView) []string {
 	for p, c := range connPoints {
 		x, y := p[0], p[1]
 		canvas[y][x] = connectorRune(c)
-	}
-
-	portPoints := map[[2]int]rune{}
-	for row := 0; row < view.RowCount; row++ {
-		y := row * 2
-		for col := 0; col < len(view.Columns); col++ {
-			// Out port on source step row.
-			if hasOutgoingMarker(outgoing, col, row) {
-				x := columnStarts[col] + columnMetrics[col].MaxStepWidth
-				if step, ok := stepsByCell[col][row]; ok {
-					stepWidth := NewStepComponent(step, 0).PreferredWidth()
-					x = columnStarts[col] + stepWidth
-				}
-				if x >= 0 && x < totalWidth {
-					portPoints[[2]int{x, y}] = '━'
-				}
-			}
-			// In port in the connector gap before the next column.
-			if col < len(view.Columns)-1 && hasIncomingMarker(incoming, col, row) {
-				x := columnStarts[col] + columnMetrics[col].MaxStepWidth + 2
-				if x >= 0 && x < totalWidth {
-					portPoints[[2]int{x, y}] = '*'
-				}
-			}
-		}
-	}
-
-	for y := 0; y < totalRows; y++ {
-		for x := 0; x < totalWidth; x++ {
-			if ch, ok := portPoints[[2]int{x, y}]; ok {
-				canvas[y][x] = ch
-			}
-		}
 	}
 
 	rows := make([]string, 0, totalRows)
@@ -632,126 +597,6 @@ func addBoundary(grid *connectorGrid, lane, boundaryRow int) {
 		grid.boundaries[lane] = map[int]bool{}
 	}
 	grid.boundaries[lane][boundaryRow] = true
-}
-
-type connectorDebugOverlay struct {
-	Markers map[int]map[int]rune
-}
-
-func buildConnectorDebugOverlay(view PipelineView) connectorDebugOverlay {
-	overlay := connectorDebugOverlay{
-		Markers: map[int]map[int]rune{},
-	}
-	for _, col := range view.Columns {
-		for _, target := range col {
-			targetPos, ok := view.Positions[target.ID]
-			if !ok || targetPos.Column == 0 {
-				continue
-			}
-			lane := targetPos.Column - 1
-			setDebugMarker(overlay.Markers, lane, targetPos.Row, '*')
-
-			for _, depID := range target.DependsOn {
-				sourcePos, ok := view.Positions[depID]
-				if !ok || sourcePos.Column >= targetPos.Column {
-					continue
-				}
-				switch {
-				case sourcePos.Row > targetPos.Row:
-					setDebugMarker(overlay.Markers, lane, sourcePos.Row, '.')
-				case sourcePos.Row < targetPos.Row:
-					setDebugMarker(overlay.Markers, lane, sourcePos.Row, '*')
-				}
-			}
-		}
-	}
-	return overlay
-}
-
-func connectorMarkerAt(markers map[int]map[int]rune, lane, row int) (rune, bool) {
-	laneMap, ok := markers[lane]
-	if !ok {
-		return 0, false
-	}
-	marker, ok := laneMap[row]
-	return marker, ok
-}
-
-func setDebugMarker(markers map[int]map[int]rune, lane, row int, marker rune) {
-	if markers[lane] == nil {
-		markers[lane] = map[int]rune{}
-	}
-	current, ok := markers[lane][row]
-	if !ok {
-		markers[lane][row] = marker
-		return
-	}
-	if current == '*' {
-		return
-	}
-	if marker == '*' {
-		markers[lane][row] = marker
-	}
-}
-
-func buildOutgoingConnectionPoints(view PipelineView) map[int]map[int]bool {
-	outgoing := map[int]map[int]bool{}
-	for _, col := range view.Columns {
-		for _, target := range col {
-			for _, depID := range target.DependsOn {
-				depPos, ok := view.Positions[depID]
-				if !ok {
-					continue
-				}
-				targetPos, ok := view.Positions[target.ID]
-				if !ok || depPos.Column >= targetPos.Column {
-					continue
-				}
-				if outgoing[depPos.Column] == nil {
-					outgoing[depPos.Column] = map[int]bool{}
-				}
-				outgoing[depPos.Column][depPos.Row] = true
-			}
-		}
-	}
-	return outgoing
-}
-
-func hasOutgoingMarker(markers map[int]map[int]bool, lane, row int) bool {
-	laneMap, ok := markers[lane]
-	if !ok {
-		return false
-	}
-	return laneMap[row]
-}
-
-func buildIncomingPortPoints(view PipelineView) map[int]map[int]bool {
-	incoming := map[int]map[int]bool{}
-	for _, col := range view.Columns {
-		for _, target := range col {
-			targetPos, ok := view.Positions[target.ID]
-			if !ok || targetPos.Column == 0 {
-				continue
-			}
-			if len(target.DependsOn) == 0 {
-				continue
-			}
-			port := targetPos.PortIn()
-			if incoming[port.Column] == nil {
-				incoming[port.Column] = map[int]bool{}
-			}
-			incoming[port.Column][port.Row] = true
-		}
-	}
-	return incoming
-}
-
-func hasIncomingMarker(markers map[int]map[int]bool, lane, row int) bool {
-	laneMap, ok := markers[lane]
-	if !ok {
-		return false
-	}
-	return laneMap[row]
 }
 
 func renderFooter(width int, text string) string {
