@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -149,7 +150,6 @@ func (m Model) View() string {
 	renderWidth := max(m.width-1, 1)
 	contentHeight := max(m.height-1, 0)
 	content := renderContent(renderWidth, contentHeight, m.spec, m.run, m.spinnerFrame, m.scrollX, m.scrollY)
-	content = clampRenderedBlock(content, renderWidth, contentHeight)
 	footer := renderFooter(renderWidth, fmt.Sprintf("run:%s | q to quit", m.run.Status))
 
 	if content == "" {
@@ -249,15 +249,44 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 }
 
 func renderContentRows(rows []string, width, sidePadding int) string {
+	innerWidth := max(width-(sidePadding*2), 0)
 	side := strings.Repeat(" ", sidePadding)
-	lineStyle := lipgloss.NewStyle().
+	sideStyle := lipgloss.NewStyle().
 		Background(theme.ContentBackground).
 		Foreground(theme.ContentForeground)
+	sideBlock := sideStyle.Render(side)
+	lineStyle := sideStyle
 	for i := range rows {
-		rows[i] = clampVisibleLine(side+rows[i]+side, width)
-		rows[i] = lineStyle.Render(rows[i])
+		body := clampVisibleLine(rows[i], innerWidth)
+		if !strings.Contains(body, "\x1b[") {
+			body = lineStyle.Render(body)
+		}
+		rows[i] = sideBlock + body + sideBlock + paintToEOL(theme.ContentBackground)
 	}
 	return strings.Join(rows, "\n")
+}
+
+func paintToEOL(bg lipgloss.Color) string {
+	return backgroundSeq(bg) + "\x1b[K\x1b[0m"
+}
+
+func backgroundSeq(bg lipgloss.Color) string {
+	s := strings.TrimSpace(string(bg))
+	if s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "#") && len(s) == 7 {
+		r, errR := strconv.ParseInt(s[1:3], 16, 64)
+		g, errG := strconv.ParseInt(s[3:5], 16, 64)
+		b, errB := strconv.ParseInt(s[5:7], 16, 64)
+		if errR == nil && errG == nil && errB == nil {
+			return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r, g, b)
+		}
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		return fmt.Sprintf("\x1b[48;5;%dm", n)
+	}
+	return ""
 }
 
 func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, viewportHeight int) []string {
@@ -868,21 +897,4 @@ func clampVisibleLine(line string, width int) string {
 		clamped += strings.Repeat(" ", width-w)
 	}
 	return clamped
-}
-
-func clampRenderedBlock(block string, width, height int) string {
-	if width <= 0 || height <= 0 {
-		return ""
-	}
-	lines := strings.Split(block, "\n")
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	for i := range lines {
-		lines[i] = clampVisibleLine(lines[i], width)
-	}
-	for len(lines) < height {
-		lines = append(lines, strings.Repeat(" ", width))
-	}
-	return strings.Join(lines, "\n")
 }
