@@ -63,19 +63,6 @@ func (c StepComponent) Colors() (lipgloss.Color, lipgloss.Color) {
 	return stepStatusColors(c.Step.Status)
 }
 
-func (c StepComponent) RenderConnectorTo(target StepView, arrow ArrowComponent) string {
-	return arrow.RenderTeeRight(dependsOn(target, c.Step.ID))
-}
-
-func dependsOn(step StepView, depID string) bool {
-	for _, dep := range step.DependsOn {
-		if dep == depID {
-			return true
-		}
-	}
-	return false
-}
-
 func stepStatusColors(status core.StepVisualStatus) (lipgloss.Color, lipgloss.Color) {
 	switch status {
 	case core.StatusGray:

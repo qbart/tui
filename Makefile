@@ -4,4 +4,4 @@ test:
 
 .PHONY: ui
 ui:
-	CGO_ENABLED=0 go run main.go
+	CGO_ENABLED=0 go run cmd/demo/main.go
