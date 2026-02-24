@@ -73,7 +73,8 @@ func main() {
 		{ID: "isolated-beta", JobName: "isolated beta"},
 	})
 
-	p := tea.NewProgram(tui.NewPipelineModel(spec), tea.WithAltScreen())
+	pipelineModel := tui.NewPipelineModel(spec)
+	p := tea.NewProgram(pipelineModel, tea.WithAltScreen())
 
 	go func() {
 		time.Sleep(1 * time.Second)
