@@ -7,7 +7,6 @@ This document defines the current visual behavior of the terminal UI.
 - Full-screen Bubble Tea app in alt-screen mode.
 - Two vertical regions:
   - Content area: takes all rows except the last row.
-  - Footer: single-line bar pinned to the bottom.
 
 ## Content Area
 - Background: black (`theme.ContentBackground`).
@@ -18,12 +17,6 @@ This document defines the current visual behavior of the terminal UI.
   - Bottom: 0.
 - No pipeline header text is rendered in content.
 - Content displays only the pipeline graph.
-
-## Footer
-- Exactly one line.
-- Background: dark gray (`theme.FooterBackground`).
-- Foreground: white (`theme.FooterForeground`).
-- Shows run status text (e.g. `run:running | q to quit`).
 
 ## Step Visuals
 - Step text format: `" <icon?> <job-name> "` with one leading and one trailing space.

@@ -100,15 +100,10 @@ func (m PipelineModel) View() string {
 	}
 
 	renderWidth := max(m.width-1, 1)
-	contentHeight := max(m.height-1, 0)
+	contentHeight := max(m.height, 0)
 	content := renderContent(renderWidth, contentHeight, m.spec, m.run, m.spinnerFrame, m.scrollX, m.scrollY, m.selectedStepID)
-	footer := renderFooter(renderWidth, fmt.Sprintf("run:%s | selected:%s | tab:select | q:quit", m.run.Status, m.selectedStepID))
 
-	if content == "" {
-		return footer
-	}
-
-	return content + "\n" + footer
+	return content
 }
 
 func (m *PipelineModel) advance(at time.Time) {
@@ -761,18 +756,6 @@ func addBoundary(grid *connectorGrid, lane, boundaryRow int) {
 		grid.boundaries[lane] = map[int]bool{}
 	}
 	grid.boundaries[lane][boundaryRow] = true
-}
-
-func renderFooter(width int, text string) string {
-	footer := text
-	if width > 0 {
-		footer = fitToWidth(text, width)
-	}
-
-	return lipgloss.NewStyle().
-		Background(theme.FooterBackground).
-		Foreground(theme.FooterForeground).
-		Render(footer)
 }
 
 func fitToWidth(s string, width int) string {
