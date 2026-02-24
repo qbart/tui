@@ -17,14 +17,15 @@ import (
 type tickMsg time.Time
 
 type Model struct {
-	width         int
-	height        int
-	spec          core.PipelineSpec
-	run           core.PipelineRun
-	stepDurations map[core.StepID]time.Duration
-	spinnerFrame  int
-	scrollX       int
-	scrollY       int
+	width          int
+	height         int
+	spec           core.PipelineSpec
+	run            core.PipelineRun
+	stepDurations  map[core.StepID]time.Duration
+	spinnerFrame   int
+	scrollX        int
+	scrollY        int
+	selectedStepID string
 }
 
 func NewModel() Model {
@@ -101,7 +102,8 @@ func NewModel() Model {
 				StartedAt: now,
 				StepRuns:  map[core.StepID]*core.StepRun{},
 			},
-			stepDurations: map[core.StepID]time.Duration{},
+			stepDurations:  map[core.StepID]time.Duration{},
+			selectedStepID: "-1",
 		}
 	}
 
@@ -167,6 +169,7 @@ func NewModel() Model {
 			"isolated-alpha":     1 * time.Second,
 			"isolated-beta":      1 * time.Second,
 		},
+		selectedStepID: "-1",
 	}
 }
 
@@ -188,6 +191,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollX--
 		case "right", "l":
 			m.scrollX++
+		case "tab":
+			m.cycleSelectedStep()
 		}
 		m.clampScroll()
 	case tea.WindowSizeMsg:
@@ -214,8 +219,8 @@ func (m Model) View() string {
 
 	renderWidth := max(m.width-1, 1)
 	contentHeight := max(m.height-1, 0)
-	content := renderContent(renderWidth, contentHeight, m.spec, m.run, m.spinnerFrame, m.scrollX, m.scrollY)
-	footer := renderFooter(renderWidth, fmt.Sprintf("run:%s | q to quit", m.run.Status))
+	content := renderContent(renderWidth, contentHeight, m.spec, m.run, m.spinnerFrame, m.scrollX, m.scrollY, m.selectedStepID)
+	footer := renderFooter(renderWidth, fmt.Sprintf("run:%s | selected:%s | tab:select | q:quit", m.run.Status, m.selectedStepID))
 
 	if content == "" {
 		return footer
@@ -260,7 +265,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineRun, spinnerFrame, scrollX, scrollY int) string {
+func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineRun, spinnerFrame, scrollX, scrollY int, selectedStepID string) string {
 	if height <= 0 {
 		return ""
 	}
@@ -274,7 +279,7 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 	contentWidth := max(width-(sidePadding*2), 0)
 	innerHeight := max(height-topPadding-bottomPadding, 0)
 
-	view, err := BuildPipelineView(spec, run, spinnerFrame)
+	view, err := BuildPipelineView(spec, run, spinnerFrame, selectedStepID)
 	if err != nil {
 		msg := clampVisibleLine(fmt.Sprintf("invalid pipeline: %v", err), contentWidth)
 		rows := make([]string, 0, height)
@@ -384,8 +389,10 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 	}
 	totalRows := view.RowCount*2 - 1
 	canvas := make([][]rune, totalRows)
+	highlightMask := make([][]bool, totalRows)
 	for y := 0; y < totalRows; y++ {
 		canvas[y] = []rune(strings.Repeat(" ", totalWidth))
+		highlightMask[y] = make([]bool, totalWidth)
 	}
 
 	stepsByCell := map[int]map[int]StepView{}
@@ -401,7 +408,7 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 
 	// Pass 1: draw lines/ports by absolute (x,y) positions.
 	connPoints := map[[2]int]linePointConn{}
-	addConn := func(x, y int, left, right, up, down bool) {
+	addConn := func(x, y int, left, right, up, down, highlighted bool) {
 		if x < 0 || x >= totalWidth || y < 0 || y >= totalRows {
 			return
 		}
@@ -412,6 +419,9 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 		c.Up = c.Up || up
 		c.Down = c.Down || down
 		connPoints[p] = c
+		if highlighted {
+			highlightMask[y][x] = true
+		}
 	}
 	for _, col := range view.Columns {
 		for _, target := range col {
@@ -439,13 +449,14 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 				if y < 0 || y >= totalRows {
 					continue
 				}
+				highlighted := view.HighlightedEdge[edgeKey(depID, target.ID)]
 				from := xOut
 				to := xIn
 				if from > to {
 					from, to = to, from
 				}
 				for x := from; x <= to; x++ {
-					addConn(x, y, x > from, x < to, false, false)
+					addConn(x, y, x > from, x < to, false, false, highlighted)
 				}
 
 				targetY := targetPos.Row * 2
@@ -456,7 +467,7 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 						fromY, toY = toY, fromY
 					}
 					for yy := fromY; yy <= toY; yy++ {
-						addConn(xIn, yy, false, false, yy > fromY, yy < toY)
+						addConn(xIn, yy, false, false, yy > fromY, yy < toY, highlighted)
 					}
 				}
 
@@ -464,7 +475,7 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 				targetStepStartX := columnStarts[targetPos.Column]
 				if targetStepStartX > xIn {
 					for x := xIn; x < targetStepStartX; x++ {
-						addConn(x, targetY, x > xIn, x < targetStepStartX-1, false, false)
+						addConn(x, targetY, x > xIn, x < targetStepStartX-1, false, false, highlighted)
 					}
 				}
 			}
@@ -512,7 +523,7 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 
 	rows := make([]string, 0, viewportHeight)
 	for y := scrollY; y < min(scrollY+viewportHeight, totalRows); y++ {
-		rows = append(rows, composeRowWithOverlaysViewport(canvas[y], overlaysByRow[y], scrollX, viewportWidth))
+		rows = append(rows, composeRowWithOverlaysViewport(canvas[y], highlightMask[y], overlaysByRow[y], scrollX, viewportWidth))
 	}
 
 	return rows
@@ -547,7 +558,7 @@ func connectorRune(c linePointConn) rune {
 	}
 }
 
-func composeRowWithOverlaysViewport(base []rune, overlays []stepOverlay, scrollX, viewportWidth int) string {
+func composeRowWithOverlaysViewport(base []rune, highlighted []bool, overlays []stepOverlay, scrollX, viewportWidth int) string {
 	if scrollX < 0 {
 		scrollX = 0
 	}
@@ -558,10 +569,14 @@ func composeRowWithOverlaysViewport(base []rune, overlays []stepOverlay, scrollX
 
 	row := make([]styledCell, len(base))
 	for i, ch := range base {
+		fg := theme.ArrowColor
+		if i < len(highlighted) && highlighted[i] {
+			fg = theme.ArrowSelectedColor
+		}
 		row[i] = styledCell{
 			ch: ch,
 			bg: theme.ContentBackground,
-			fg: theme.ArrowColor,
+			fg: fg,
 		}
 	}
 
@@ -896,7 +911,7 @@ func (m *Model) clampScroll() {
 		m.scrollY = 0
 		return
 	}
-	view, err := BuildPipelineView(m.spec, m.run, m.spinnerFrame)
+	view, err := BuildPipelineView(m.spec, m.run, m.spinnerFrame, m.selectedStepID)
 	if err != nil {
 		m.scrollX = 0
 		m.scrollY = 0
@@ -926,6 +941,34 @@ func (m *Model) clampScroll() {
 	if m.scrollY > maxY {
 		m.scrollY = maxY
 	}
+}
+
+func (m *Model) cycleSelectedStep() {
+	if len(m.spec.Steps) == 0 {
+		m.selectedStepID = "-1"
+		return
+	}
+	if m.selectedStepID == "" || m.selectedStepID == "-1" {
+		m.selectedStepID = string(m.spec.Steps[0].ID)
+		return
+	}
+
+	currentIdx := -1
+	for i, step := range m.spec.Steps {
+		if string(step.ID) == m.selectedStepID {
+			currentIdx = i
+			break
+		}
+	}
+	if currentIdx < 0 {
+		m.selectedStepID = "-1"
+		return
+	}
+	if currentIdx >= len(m.spec.Steps)-1 {
+		m.selectedStepID = "-1"
+		return
+	}
+	m.selectedStepID = string(m.spec.Steps[currentIdx+1].ID)
 }
 
 func graphDimensions(view PipelineView) (int, int) {
