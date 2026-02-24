@@ -4,7 +4,9 @@ import "tui/core"
 
 var Spinner = []rune("⣾⣽⣻⢿⡿⣟⣯⣷")
 
-type StepView struct {
+const statusSelected core.StepVisualStatus = "StatusSelected"
+
+type stepView struct {
 	ID        string
 	JobName   string
 	DependsOn []string
@@ -13,35 +15,34 @@ type StepView struct {
 	SpinChar  string
 }
 
-type StepPositionView struct {
+type stepPositionView struct {
 	Column int
 	Row    int
 	Width  int
 }
 
-func (v StepPositionView) PortIn() StepPositionView {
-	return StepPositionView{v.Column - 1, v.Row, v.Width}
+func (v stepPositionView) PortIn() stepPositionView {
+	return stepPositionView{v.Column - 1, v.Row, v.Width}
 }
 
-type PipelineView struct {
-	Columns         [][]StepView
-	Positions       map[string]StepPositionView
+type pipelineView struct {
+	Columns         [][]stepView
+	Positions       map[string]stepPositionView
 	RowCount        int
-	SelectedStepID  string
 	HighlightedEdge map[string]bool
 }
 
-func BuildPipelineView(spec core.PipelineSpec, stepStates map[core.StepID]StepRuntimeState, spinnerFrame int, selectedStepID string) (PipelineView, error) {
+func buildPipelineView(spec core.PipelineSpec, stepStates map[core.StepID]StepRuntimeState, spinnerFrame int, selectedStepID string) (pipelineView, error) {
 	columns, positions, rowCount, err := spec.Layout()
 	if err != nil {
-		return PipelineView{}, err
+		return pipelineView{}, err
 	}
 	highlightedEdges := highlightedEdgesForSelection(spec, selectedStepID)
 
-	viewCols := make([][]StepView, len(columns))
-	stepsByID := make(map[string]StepView, len(spec.Steps))
+	viewCols := make([][]stepView, len(columns))
+	stepsByID := make(map[string]stepView, len(spec.Steps))
 	for i, col := range columns {
-		viewCol := make([]StepView, 0, len(col))
+		viewCol := make([]stepView, 0, len(col))
 		for _, step := range col {
 			deps := make([]string, 0, len(step.DependsOn))
 			for _, dep := range step.DependsOn {
@@ -57,10 +58,10 @@ func BuildPipelineView(spec core.PipelineSpec, stepStates map[core.StepID]StepRu
 				spinner = state.Spinner
 			}
 			if selectedStepID != "" && selectedStepID == string(step.ID) {
-				status = core.StatusSelected
+				status = statusSelected
 			}
 
-			viewStep := StepView{
+			viewStep := stepView{
 				ID:        string(step.ID),
 				JobName:   step.JobName,
 				DependsOn: deps,
@@ -74,21 +75,20 @@ func BuildPipelineView(spec core.PipelineSpec, stepStates map[core.StepID]StepRu
 		viewCols[i] = viewCol
 	}
 
-	viewPos := make(map[string]StepPositionView, len(positions))
+	viewPos := make(map[string]stepPositionView, len(positions))
 	for stepID, pos := range positions {
 		step, ok := stepsByID[string(stepID)]
 		width := 0
 		if ok {
 			width = NewStepComponent(step, 0).PreferredWidth()
 		}
-		viewPos[string(stepID)] = StepPositionView{Column: pos.Column, Row: pos.Row, Width: width}
+		viewPos[string(stepID)] = stepPositionView{Column: pos.Column, Row: pos.Row, Width: width}
 	}
 
-	return PipelineView{
+	return pipelineView{
 		Columns:         viewCols,
 		Positions:       viewPos,
 		RowCount:        rowCount,
-		SelectedStepID:  selectedStepID,
 		HighlightedEdge: highlightedEdges,
 	}, nil
 }

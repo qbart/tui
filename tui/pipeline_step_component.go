@@ -8,11 +8,11 @@ import (
 )
 
 type StepComponent struct {
-	Step  StepView
+	Step  stepView
 	Width int
 }
 
-func NewStepComponent(step StepView, width int) StepComponent {
+func NewStepComponent(step stepView, width int) StepComponent {
 	return StepComponent{
 		Step:  step,
 		Width: width,
@@ -79,7 +79,7 @@ func stepStatusColors(status core.StepVisualStatus) (lipgloss.Color, lipgloss.Co
 		return theme.StatusOrangeBg, theme.StatusOrangeFg
 	case core.StatusPurple:
 		return theme.StatusPurpleBg, theme.StatusPurpleFg
-	case core.StatusSelected:
+	case statusSelected:
 		return theme.SelectedBg, theme.SelectedFg
 	default:
 		return theme.StatusBlackBg, theme.StatusBlackFg

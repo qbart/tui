@@ -85,6 +85,9 @@ func main() {
 		time.Sleep(2 * time.Second)
 		p.Send(tui.SetStepSpinnerMsg{StepID: "perf-a-setup", Spinner: false})
 		p.Send(tui.SetStepStatusMsg{StepID: "perf-a-setup", Status: core.StatusGreen})
+		p.Send(tui.SetStepSelectedMsg{StepID: "perf-b-stress"})
+		time.Sleep(500 * time.Millisecond)
+		p.Send(tui.SetStepSelectedMsg{StepID: ""})
 	}()
 
 	if _, err := p.Run(); err != nil {

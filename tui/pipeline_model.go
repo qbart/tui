@@ -141,7 +141,7 @@ func renderContent(width, height int, spec core.PipelineSpec, stepStates map[cor
 	contentWidth := max(width-(sidePadding*2), 0)
 	innerHeight := max(height-topPadding-bottomPadding, 0)
 
-	view, err := BuildPipelineView(spec, stepStates, spinnerFrame, selectedStepID)
+	view, err := buildPipelineView(spec, stepStates, spinnerFrame, selectedStepID)
 	if err != nil {
 		msg := clampVisibleLine(fmt.Sprintf("invalid pipeline: %v", err), contentWidth)
 		rows := make([]string, 0, height)
@@ -228,7 +228,7 @@ func backgroundSeq(bg lipgloss.Color) string {
 	return ""
 }
 
-func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, viewportHeight int) []string {
+func renderPipelineGraph(view pipelineView, scrollX, scrollY, viewportWidth, viewportHeight int) []string {
 	if len(view.Columns) == 0 {
 		return []string{"(no steps)"}
 	}
@@ -257,12 +257,12 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 		highlightMask[y] = make([]bool, totalWidth)
 	}
 
-	stepsByCell := map[int]map[int]StepView{}
+	stepsByCell := map[int]map[int]stepView{}
 	for _, colSteps := range view.Columns {
 		for _, step := range colSteps {
 			pos := view.Positions[step.ID]
 			if stepsByCell[pos.Column] == nil {
-				stepsByCell[pos.Column] = map[int]StepView{}
+				stepsByCell[pos.Column] = map[int]stepView{}
 			}
 			stepsByCell[pos.Column][pos.Row] = step
 		}
@@ -526,7 +526,7 @@ type styledCell struct {
 	fg lipgloss.Color
 }
 
-func buildColumnRenderMetrics(columns [][]StepView) []columnRenderMetrics {
+func buildColumnRenderMetrics(columns [][]stepView) []columnRenderMetrics {
 	metrics := make([]columnRenderMetrics, len(columns))
 	for col := range columns {
 		maxWidth := 0
@@ -550,7 +550,7 @@ func (m *PipelineModel) clampScroll() {
 		m.scrollY = 0
 		return
 	}
-	view, err := BuildPipelineView(m.spec, m.stepStates, m.spinnerFrame, m.selectedStepID)
+	view, err := buildPipelineView(m.spec, m.stepStates, m.spinnerFrame, m.selectedStepID)
 	if err != nil {
 		m.scrollX = 0
 		m.scrollY = 0
@@ -646,7 +646,7 @@ func (m *PipelineModel) cycleSelectedStep() {
 	m.selectedStepID = string(m.spec.Steps[currentIdx+1].ID)
 }
 
-func graphDimensions(view PipelineView) (int, int) {
+func graphDimensions(view pipelineView) (int, int) {
 	if len(view.Columns) == 0 || view.RowCount == 0 {
 		return 0, 0
 	}

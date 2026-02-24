@@ -6,41 +6,21 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"time"
 )
 
 type StepID string
 
-type StepRunStatus string
-
 type StepVisualStatus string
 
 const (
-	StepRunIdle   StepRunStatus = "idle"
-	StepRunDoing  StepRunStatus = "doing"
-	StepRunFailed StepRunStatus = "failed"
-	StepRunDone   StepRunStatus = "done"
-)
-
-const (
-	StatusBlack    StepVisualStatus = "StatusBlack"
-	StatusGray     StepVisualStatus = "StatusGray"
-	StatusGreen    StepVisualStatus = "StatusGreen"
-	StatusRed      StepVisualStatus = "StatusRed"
-	StatusYellow   StepVisualStatus = "StatusYellow"
-	StatusBlue     StepVisualStatus = "StatusBlue"
-	StatusOrange   StepVisualStatus = "StatusOrange"
-	StatusPurple   StepVisualStatus = "StatusPurple"
-	StatusSelected StepVisualStatus = "StatusSelected"
-)
-
-type PipelineRunStatus string
-
-const (
-	PipelineRunStatusIdle      PipelineRunStatus = "idle"
-	PipelineRunStatusRunning   PipelineRunStatus = "running"
-	PipelineRunStatusSucceeded PipelineRunStatus = "succeeded"
-	PipelineRunStatusFailed    PipelineRunStatus = "failed"
+	StatusBlack  StepVisualStatus = "black"
+	StatusGray   StepVisualStatus = "gray"
+	StatusGreen  StepVisualStatus = "green"
+	StatusRed    StepVisualStatus = "red"
+	StatusYellow StepVisualStatus = "yellow"
+	StatusBlue   StepVisualStatus = "blue"
+	StatusOrange StepVisualStatus = "orange"
+	StatusPurple StepVisualStatus = "purple"
 )
 
 type StepSpec struct {
@@ -58,25 +38,6 @@ type PipelineSpec struct {
 type StepPosition struct {
 	Column int
 	Row    int
-}
-
-type StepRun struct {
-	Status     StepRunStatus
-	StartedAt  *time.Time
-	FinishedAt *time.Time
-	ExitCode   *int
-	LogRef     string
-	RetryCount int
-	Duration   time.Duration
-}
-
-type PipelineRun struct {
-	ID         string
-	SpecID     string
-	Status     PipelineRunStatus
-	StartedAt  time.Time
-	FinishedAt *time.Time
-	StepRuns   map[StepID]*StepRun
 }
 
 func NewPipelineSpec(id string, steps []StepSpec) PipelineSpec {
@@ -154,118 +115,6 @@ func (p PipelineSpec) Validate() error {
 	}
 
 	return nil
-}
-
-func NewPipelineRun(spec PipelineSpec, runID string, startedAt time.Time) (PipelineRun, error) {
-	if err := spec.Validate(); err != nil {
-		return PipelineRun{}, err
-	}
-	if runID == "" {
-		return PipelineRun{}, errors.New("run id is required")
-	}
-
-	stepRuns := make(map[StepID]*StepRun, len(spec.Steps))
-	for _, step := range spec.Steps {
-		stepRuns[step.ID] = &StepRun{Status: StepRunIdle}
-	}
-
-	return PipelineRun{ID: runID, SpecID: spec.ID, Status: PipelineRunStatusRunning, StartedAt: startedAt, StepRuns: stepRuns}, nil
-}
-
-func (r PipelineRun) IsTerminal() bool {
-	return r.Status == PipelineRunStatusSucceeded || r.Status == PipelineRunStatusFailed
-}
-
-func (r PipelineRun) RunningStepID() (StepID, bool) {
-	for id, stepRun := range r.StepRuns {
-		if stepRun != nil && stepRun.Status == StepRunDoing {
-			return id, true
-		}
-	}
-	return "", false
-}
-
-func (r PipelineRun) ReadySteps(spec PipelineSpec) []StepID {
-	ready := make([]StepID, 0, len(spec.Steps))
-	for _, step := range spec.Steps {
-		stepRun := r.StepRuns[step.ID]
-		if stepRun == nil || stepRun.Status != StepRunIdle {
-			continue
-		}
-		if r.dependenciesDone(step.DependsOn) {
-			ready = append(ready, step.ID)
-		}
-	}
-	return ready
-}
-
-func (r *PipelineRun) StartStep(stepID StepID, at time.Time) error {
-	stepRun, ok := r.StepRuns[stepID]
-	if !ok {
-		return fmt.Errorf("unknown step %q", stepID)
-	}
-	if stepRun.Status != StepRunIdle {
-		return fmt.Errorf("step %q is not idle", stepID)
-	}
-	stepRun.Status = StepRunDoing
-	stepRun.StartedAt = &at
-	r.Status = PipelineRunStatusRunning
-	return nil
-}
-
-func (r *PipelineRun) CompleteStep(stepID StepID, at time.Time, success bool, exitCode int, logRef string) error {
-	stepRun, ok := r.StepRuns[stepID]
-	if !ok {
-		return fmt.Errorf("unknown step %q", stepID)
-	}
-	if stepRun.Status != StepRunDoing {
-		return fmt.Errorf("step %q is not doing", stepID)
-	}
-
-	stepRun.FinishedAt = &at
-	stepRun.LogRef = logRef
-	stepRun.ExitCode = &exitCode
-	if stepRun.StartedAt != nil {
-		stepRun.Duration = at.Sub(*stepRun.StartedAt)
-	}
-	if success {
-		stepRun.Status = StepRunDone
-	} else {
-		stepRun.Status = StepRunFailed
-	}
-	return nil
-}
-
-func (r *PipelineRun) RefreshStatus(spec PipelineSpec, at time.Time) {
-	for _, step := range spec.Steps {
-		stepRun := r.StepRuns[step.ID]
-		if stepRun != nil && stepRun.Status == StepRunFailed {
-			r.Status = PipelineRunStatusFailed
-			r.FinishedAt = &at
-			return
-		}
-	}
-
-	for _, step := range spec.Steps {
-		stepRun := r.StepRuns[step.ID]
-		if stepRun == nil || stepRun.Status != StepRunDone {
-			r.Status = PipelineRunStatusRunning
-			return
-		}
-	}
-
-	r.Status = PipelineRunStatusSucceeded
-	r.FinishedAt = &at
-}
-
-func (r PipelineRun) dependenciesDone(dependencies []StepID) bool {
-	for _, depID := range dependencies {
-		depRun, ok := r.StepRuns[depID]
-		if !ok || depRun == nil || depRun.Status != StepRunDone {
-			return false
-		}
-	}
-	return true
 }
 
 func (p PipelineSpec) StepLevels() (map[StepID]int, error) {
