@@ -25,9 +25,10 @@ func (c StepComponent) RenderBrick() string {
 		width = c.PreferredWidth()
 	}
 
+	bg, fg := stepStatusColors(c.Step.Status)
 	baseTextStyle := lipgloss.NewStyle().
-		Background(theme.StepBackground).
-		Foreground(theme.StepForeground)
+		Background(bg).
+		Foreground(fg)
 
 	iconPart := ""
 	if c.Step.Icon != "" {
@@ -64,4 +65,21 @@ func dependsOn(step StepView, depID string) bool {
 
 func blankBrick(width int) string {
 	return strings.Repeat(" ", max(width, 0))
+}
+
+func stepStatusColors(status StepVisualStatus) (lipgloss.Color, lipgloss.Color) {
+	switch status {
+	case StatusGray:
+		return theme.StatusGrayBg, theme.StatusGrayFg
+	case StatusGreen:
+		return theme.StatusGreenBg, theme.StatusGreenFg
+	case StatusRed:
+		return theme.StatusRedBg, theme.StatusRedFg
+	case StatusYellow:
+		return theme.StatusYellowBg, theme.StatusYellowFg
+	case StatusBlue:
+		return theme.StatusBlueBg, theme.StatusBlueFg
+	default:
+		return theme.StatusBlackBg, theme.StatusBlackFg
+	}
 }

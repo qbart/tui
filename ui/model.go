@@ -358,7 +358,7 @@ func connectorRune(c linePointConn) rune {
 func composeRowWithOverlays(base []rune, overlays []stepOverlay) string {
 	baseStyle := lipgloss.NewStyle().
 		Background(theme.ContentBackground).
-		Foreground(theme.ContentForeground)
+		Foreground(theme.ArrowColor)
 
 	if len(overlays) == 0 {
 		return baseStyle.Render(string(base))

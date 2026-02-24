@@ -2,11 +2,23 @@ package ui
 
 import core "hestia/hestia"
 
+type StepVisualStatus string
+
+const (
+	StatusBlack  StepVisualStatus = "StatusBlack"
+	StatusGray   StepVisualStatus = "StatusGray"
+	StatusGreen  StepVisualStatus = "StatusGreen"
+	StatusRed    StepVisualStatus = "StatusRed"
+	StatusYellow StepVisualStatus = "StatusYellow"
+	StatusBlue   StepVisualStatus = "StatusBlue"
+)
+
 type StepView struct {
 	ID        string
 	Icon      string
 	JobName   string
 	DependsOn []string
+	Status    StepVisualStatus
 }
 
 type StepPositionView struct {
@@ -49,6 +61,7 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun) (PipelineVi
 				Icon:      "",
 				JobName:   step.JobName,
 				DependsOn: deps,
+				Status:    visualStatusForStepID(string(step.ID)),
 			}
 			viewCol = append(viewCol, viewStep)
 			stepsByID[viewStep.ID] = viewStep
@@ -67,4 +80,21 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun) (PipelineVi
 	}
 
 	return PipelineView{Columns: viewCols, Positions: viewPos, RowCount: rowCount}, nil
+}
+
+func visualStatusForStepID(stepID string) StepVisualStatus {
+	switch stepID {
+	case "checkout":
+		return StatusGray
+	case "build":
+		return StatusBlue
+	case "test-postresql":
+		return StatusYellow
+	case "test-sqlite":
+		return StatusGreen
+	case "test-duckdb":
+		return StatusRed
+	default:
+		return StatusBlack
+	}
 }
