@@ -360,6 +360,11 @@ func computePositions(columns [][]StepSpec, levels map[StepID]int, allSteps []St
 
 		columnCursor := 0
 		for _, group := range grouped {
+			preferred := int(math.Round(dependencyRowScore(group[0], positions)))
+			if preferred < 0 {
+				preferred = 0
+			}
+
 			sort.SliceStable(group, func(i, j int) bool {
 				aSpan := branchFootprint(group[i], nextColumnDependents)
 				bSpan := branchFootprint(group[j], nextColumnDependents)
@@ -369,7 +374,7 @@ func computePositions(columns [][]StepSpec, levels map[StepID]int, allSteps []St
 				return group[i].ID < group[j].ID
 			})
 
-			cursor := columnCursor
+			cursor := max(columnCursor, preferred)
 
 			for _, step := range group {
 				row := findNearestFreeRowAtOrBelow(occupied[colIdx], cursor)

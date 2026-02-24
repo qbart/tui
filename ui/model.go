@@ -79,7 +79,7 @@ func NewModel() Model {
 		{ID: "perf-b-loadgen", JobName: "perf b loadgen", DependsOn: []core.StepID{"perf-b-setup"}},
 		{ID: "perf-b-stress", JobName: "perf b stress", DependsOn: []core.StepID{"perf-b-loadgen"}},
 		{ID: "perf-b-validate", JobName: "perf b validate", DependsOn: []core.StepID{"perf-b-baseline", "perf-b-stress"}},
-		{ID: "perf-b-profile", JobName: "perf b profile", DependsOn: []core.StepID{"perf-b-loadgen", "perf-b-stress"}},
+		{ID: "perf-b-profile", JobName: "perf b profile", DependsOn: []core.StepID{"perf-b-stress"}},
 		{ID: "perf-b-compare", JobName: "perf b compare", DependsOn: []core.StepID{"perf-b-validate", "perf-b-profile"}},
 		{ID: "lab-seed", JobName: "lab seed"},
 		{ID: "lab-simulate", JobName: "lab simulate", DependsOn: []core.StepID{"lab-seed"}},
