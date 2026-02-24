@@ -16,7 +16,7 @@ import (
 
 type tickMsg time.Time
 
-type Model struct {
+type PipelineModel struct {
 	width          int
 	height         int
 	spec           core.PipelineSpec
@@ -28,7 +28,7 @@ type Model struct {
 	selectedStepID string
 }
 
-func NewModel() Model {
+func NewPipelineModel() PipelineModel {
 	spec := core.NewPipelineSpec("sample-cicd", []core.StepSpec{
 		{ID: "checkout", JobName: "checkout"},
 		{ID: "lint", JobName: "lint", DependsOn: []core.StepID{"checkout"}},
@@ -93,7 +93,7 @@ func NewModel() Model {
 	now := time.Now()
 	run, err := core.NewPipelineRun(spec, "run-1", now)
 	if err != nil {
-		return Model{
+		return PipelineModel{
 			spec: spec,
 			run: core.PipelineRun{
 				ID:        "run-1",
@@ -107,7 +107,7 @@ func NewModel() Model {
 		}
 	}
 
-	return Model{
+	return PipelineModel{
 		spec: spec,
 		run:  run,
 		stepDurations: map[core.StepID]time.Duration{
@@ -173,11 +173,11 @@ func NewModel() Model {
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m PipelineModel) Init() tea.Cmd {
 	return tickCmd()
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m PipelineModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -212,7 +212,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) View() string {
+func (m PipelineModel) View() string {
 	if m.width <= 0 || m.height <= 0 {
 		return "Loading..."
 	}
@@ -229,7 +229,7 @@ func (m Model) View() string {
 	return content + "\n" + footer
 }
 
-func (m *Model) advance(at time.Time) {
+func (m *PipelineModel) advance(at time.Time) {
 	if m.run.IsTerminal() {
 		return
 	}
@@ -905,7 +905,7 @@ func fitToWidth(s string, width int) string {
 	return fitted
 }
 
-func (m *Model) clampScroll() {
+func (m *PipelineModel) clampScroll() {
 	if m.width <= 0 || m.height <= 0 {
 		m.scrollX = 0
 		m.scrollY = 0
@@ -943,7 +943,7 @@ func (m *Model) clampScroll() {
 	}
 }
 
-func (m *Model) cycleSelectedStep() {
+func (m *PipelineModel) cycleSelectedStep() {
 	if len(m.spec.Steps) == 0 {
 		m.selectedStepID = "-1"
 		return
