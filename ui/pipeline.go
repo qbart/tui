@@ -19,6 +19,8 @@ type StepView struct {
 	JobName   string
 	DependsOn []string
 	Status    StepVisualStatus
+	Spinner   bool
+	SpinChar  string
 }
 
 type StepPositionView struct {
@@ -40,11 +42,12 @@ type PipelineView struct {
 	RowCount  int
 }
 
-func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun) (PipelineView, error) {
+func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun, spinnerFrame int) (PipelineView, error) {
 	columns, positions, rowCount, err := spec.Layout()
 	if err != nil {
 		return PipelineView{}, err
 	}
+	runningStepID, hasRunning := run.RunningStepID()
 
 	viewCols := make([][]StepView, len(columns))
 	stepsByID := make(map[string]StepView, len(spec.Steps))
@@ -62,6 +65,8 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun) (PipelineVi
 				JobName:   step.JobName,
 				DependsOn: deps,
 				Status:    visualStatusForStepID(string(step.ID)),
+				Spinner:   hasRunning && string(runningStepID) == string(step.ID),
+				SpinChar:  spinnerGlyph(spinnerFrame),
 			}
 			viewCol = append(viewCol, viewStep)
 			stepsByID[viewStep.ID] = viewStep
@@ -97,4 +102,19 @@ func visualStatusForStepID(stepID string) StepVisualStatus {
 	default:
 		return StatusBlack
 	}
+}
+
+func spinnerGlyph(frame int) string {
+	frames := []rune("⣾⣽⣻⢿⡿⣟⣯⣷")
+	if len(frames) == 0 {
+		return ""
+	}
+	if frame < 0 {
+		frame = 0
+	}
+	return string(frames[frame%len(frames)])
+}
+
+func spinnerFrameCount() int {
+	return len([]rune("⣾⣽⣻⢿⡿⣟⣯⣷"))
 }

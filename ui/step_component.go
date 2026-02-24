@@ -35,6 +35,14 @@ func (c StepComponent) RenderBrick() string {
 		iconPart = c.Step.Icon + " "
 	}
 	label := "  " + iconPart + c.Step.JobName + "  "
+	if c.Step.Spinner && c.Step.SpinChar != "" {
+		r := []rune(label)
+		if len(r) > 0 {
+			spin := []rune(c.Step.SpinChar)[0]
+			r[len(r)-1] = spin
+			label = string(r)
+		}
+	}
 
 	return baseTextStyle.
 		Width(width).

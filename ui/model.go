@@ -20,6 +20,7 @@ type Model struct {
 	spec          core.PipelineSpec
 	run           core.PipelineRun
 	stepDurations map[core.StepID]time.Duration
+	spinnerFrame  int
 }
 
 func NewModel() Model {
@@ -83,6 +84,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tickMsg:
+		frameCount := spinnerFrameCount()
+		if frameCount > 0 {
+			m.spinnerFrame = (m.spinnerFrame + 1) % frameCount
+		}
 		m.advance(time.Time(msg))
 		return m, tickCmd()
 	}
@@ -96,7 +101,7 @@ func (m Model) View() string {
 	}
 
 	contentHeight := max(m.height-1, 0)
-	content := renderContent(m.width, contentHeight, m.spec, m.run)
+	content := renderContent(m.width, contentHeight, m.spec, m.run, m.spinnerFrame)
 	footer := renderFooter(m.width, fmt.Sprintf("run:%s | q to quit", m.run.Status))
 
 	if content == "" {
@@ -142,7 +147,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineRun) string {
+func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineRun, spinnerFrame int) string {
 	if height <= 0 {
 		return ""
 	}
@@ -156,7 +161,7 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 	}
 	innerHeight := max(height-topPadding, 0)
 
-	view, err := BuildPipelineView(spec, run)
+	view, err := BuildPipelineView(spec, run, spinnerFrame)
 	if err != nil {
 		return lipgloss.NewStyle().
 			Background(theme.ContentBackground).
