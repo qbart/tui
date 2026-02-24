@@ -15,7 +15,6 @@ const (
 
 type StepView struct {
 	ID        string
-	Icon      string
 	JobName   string
 	DependsOn []string
 	Status    StepVisualStatus
@@ -61,7 +60,6 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun, spinnerFram
 
 			viewStep := StepView{
 				ID:        string(step.ID),
-				Icon:      "",
 				JobName:   step.JobName,
 				DependsOn: deps,
 				Status:    visualStatusForStepID(string(step.ID)),

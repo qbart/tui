@@ -30,11 +30,7 @@ func (c StepComponent) RenderBrick() string {
 		Background(bg).
 		Foreground(fg)
 
-	iconPart := ""
-	if c.Step.Icon != "" {
-		iconPart = c.Step.Icon + " "
-	}
-	label := "  " + iconPart + c.Step.JobName + "  "
+	label := "  " + c.Step.JobName + "  "
 	if c.Step.Spinner && c.Step.SpinChar != "" {
 		r := []rune(label)
 		if len(r) > 0 {
@@ -50,12 +46,8 @@ func (c StepComponent) RenderBrick() string {
 }
 
 func (c StepComponent) PreferredWidth() int {
-	iconPart := ""
-	if c.Step.Icon != "" {
-		iconPart = c.Step.Icon + " "
-	}
 	// Text + 4 chars total padding (2 on each side).
-	return utf8.RuneCountInString(iconPart+c.Step.JobName) + 4
+	return utf8.RuneCountInString(c.Step.JobName) + 4
 }
 
 func (c StepComponent) RenderConnectorTo(target StepView, arrow ArrowComponent) string {
