@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -224,18 +225,7 @@ func renderPipelineGraph(view PipelineView) []string {
 		}
 	}
 
-	// Pass 1: place step text at absolute positions.
-	for row := 0; row < view.RowCount; row++ {
-		y := row * 2
-		for col := 0; col < len(view.Columns); col++ {
-			x := columnStarts[col]
-			if step, ok := stepsByCell[col][row]; ok {
-				drawTextAt(canvas, x, y, plainStepLabel(step))
-			}
-		}
-	}
-
-	// Pass 2: draw lines/ports by absolute (x,y) positions.
+	// Pass 1: draw lines/ports by absolute (x,y) positions.
 	connPoints := map[[2]int]linePointConn{}
 	addConn := func(x, y int, left, right, up, down bool) {
 		if x < 0 || x >= totalWidth || y < 0 || y >= totalRows {
@@ -311,9 +301,26 @@ func renderPipelineGraph(view PipelineView) []string {
 		canvas[y][x] = connectorRune(c)
 	}
 
-	rows := make([]string, 0, totalRows)
+	// Pass 2: place styled step nodes on top of arrows.
+	overlaysByRow := map[int][]stepOverlay{}
+	for row := 0; row < view.RowCount; row++ {
+		y := row * 2
+		for col := 0; col < len(view.Columns); col++ {
+			x := columnStarts[col]
+			if step, ok := stepsByCell[col][row]; ok {
+				component := NewStepComponent(step, 0)
+				overlaysByRow[y] = append(overlaysByRow[y], stepOverlay{
+					start:  x,
+					width:  component.PreferredWidth(),
+					styled: component.RenderBrick(),
+				})
+			}
+		}
+	}
+
+	rows := make([]string, totalRows)
 	for y := 0; y < totalRows; y++ {
-		rows = append(rows, string(canvas[y]))
+		rows[y] = composeRowWithOverlays(canvas[y], overlaysByRow[y])
 	}
 
 	return rows
@@ -348,26 +355,46 @@ func connectorRune(c linePointConn) rune {
 	}
 }
 
-func drawTextAt(canvas [][]rune, x, y int, text string) {
-	if y < 0 || y >= len(canvas) || x >= len(canvas[y]) {
-		return
+func composeRowWithOverlays(base []rune, overlays []stepOverlay) string {
+	baseStyle := lipgloss.NewStyle().
+		Background(theme.ContentBackground).
+		Foreground(theme.ContentForeground)
+
+	if len(overlays) == 0 {
+		return baseStyle.Render(string(base))
 	}
-	runes := []rune(text)
-	for i, ch := range runes {
-		xx := x + i
-		if xx < 0 || xx >= len(canvas[y]) {
+
+	sort.SliceStable(overlays, func(i, j int) bool {
+		return overlays[i].start < overlays[j].start
+	})
+
+	var b strings.Builder
+	cursor := 0
+	for _, ov := range overlays {
+		if ov.width <= 0 || ov.start >= len(base) {
 			continue
 		}
-		canvas[y][xx] = ch
+		start := ov.start
+		if start < cursor {
+			start = cursor
+		}
+		if start > len(base) {
+			start = len(base)
+		}
+		if start > cursor {
+			b.WriteString(baseStyle.Render(string(base[cursor:start])))
+		}
+		b.WriteString(ov.styled)
+		end := start + ov.width
+		if end > len(base) {
+			end = len(base)
+		}
+		cursor = end
 	}
-}
-
-func plainStepLabel(step StepView) string {
-	iconPart := ""
-	if step.Icon != "" {
-		iconPart = step.Icon + " "
+	if cursor < len(base) {
+		b.WriteString(baseStyle.Render(string(base[cursor:])))
 	}
-	return " " + iconPart + step.JobName + " "
+	return b.String()
 }
 
 type horizontalConnectorGrid struct {
@@ -432,6 +459,12 @@ type linePointConn struct {
 	Right bool
 	Up    bool
 	Down  bool
+}
+
+type stepOverlay struct {
+	start  int
+	width  int
+	styled string
 }
 
 func buildColumnRenderMetrics(columns [][]StepView) []columnRenderMetrics {
