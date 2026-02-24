@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"tui/core"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -17,24 +15,24 @@ import (
 type tickMsg time.Time
 
 type SetStepStatusMsg struct {
-	StepID core.StepID
-	Status core.StepVisualStatus
+	StepID StepID
+	Status StepVisualStatus
 }
 
 type SetStepSpinnerMsg struct {
-	StepID  core.StepID
+	StepID  StepID
 	Spinner bool
 }
 
 type SetStepSelectedMsg struct {
-	StepID core.StepID
+	StepID StepID
 }
 
 type PipelineModel struct {
 	width          int
 	height         int
-	spec           core.PipelineSpec
-	stepStates     map[core.StepID]StepRuntimeState
+	spec           PipelineSpec
+	stepStates     map[StepID]StepRuntimeState
 	spinnerFrame   int
 	scrollX        int
 	scrollY        int
@@ -42,12 +40,12 @@ type PipelineModel struct {
 }
 
 type StepRuntimeState struct {
-	Status  core.StepVisualStatus
+	Status  StepVisualStatus
 	Spinner bool
 }
 
-func NewPipelineModel(spec core.PipelineSpec) PipelineModel {
-	stepStates := make(map[core.StepID]StepRuntimeState, len(spec.Steps))
+func NewPipelineModel(spec PipelineSpec) PipelineModel {
+	stepStates := make(map[StepID]StepRuntimeState, len(spec.Steps))
 	for _, step := range spec.Steps {
 		stepStates[step.ID] = StepRuntimeState{
 			Status:  step.Status,
@@ -80,8 +78,6 @@ func (m PipelineModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scrollX--
 		case "right", "l":
 			m.scrollX++
-		case "tab":
-			m.cycleSelectedStep()
 		}
 		m.clampScroll()
 	case tea.WindowSizeMsg:
@@ -127,7 +123,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func renderContent(width, height int, spec core.PipelineSpec, stepStates map[core.StepID]StepRuntimeState, spinnerFrame, scrollX, scrollY int, selectedStepID string) string {
+func renderContent(width, height int, spec PipelineSpec, stepStates map[StepID]StepRuntimeState, spinnerFrame, scrollX, scrollY int, selectedStepID string) string {
 	if height <= 0 {
 		return ""
 	}
@@ -582,7 +578,7 @@ func (m *PipelineModel) clampScroll() {
 	}
 }
 
-func (m *PipelineModel) SetStepStatus(stepID core.StepID, status core.StepVisualStatus) error {
+func (m *PipelineModel) SetStepStatus(stepID StepID, status StepVisualStatus) error {
 	if _, ok := m.spec.StepByID(stepID); !ok {
 		return fmt.Errorf("unknown step %q", stepID)
 	}
@@ -593,7 +589,7 @@ func (m *PipelineModel) SetStepStatus(stepID core.StepID, status core.StepVisual
 	return nil
 }
 
-func (m *PipelineModel) SetStepSpinner(stepID core.StepID, spinning bool) error {
+func (m *PipelineModel) SetStepSpinner(stepID StepID, spinning bool) error {
 	if _, ok := m.spec.StepByID(stepID); !ok {
 		return fmt.Errorf("unknown step %q", stepID)
 	}
@@ -604,7 +600,7 @@ func (m *PipelineModel) SetStepSpinner(stepID core.StepID, spinning bool) error 
 	return nil
 }
 
-func (m *PipelineModel) SetStepSelected(stepID core.StepID) error {
+func (m *PipelineModel) SetStepSelected(stepID StepID) error {
 	if stepID == "" {
 		m.selectedStepID = ""
 		m.clampScroll()
@@ -616,34 +612,6 @@ func (m *PipelineModel) SetStepSelected(stepID core.StepID) error {
 	m.selectedStepID = string(stepID)
 	m.clampScroll()
 	return nil
-}
-
-func (m *PipelineModel) cycleSelectedStep() {
-	if len(m.spec.Steps) == 0 {
-		m.selectedStepID = ""
-		return
-	}
-	if m.selectedStepID == "" {
-		m.selectedStepID = string(m.spec.Steps[0].ID)
-		return
-	}
-
-	currentIdx := -1
-	for i, step := range m.spec.Steps {
-		if string(step.ID) == m.selectedStepID {
-			currentIdx = i
-			break
-		}
-	}
-	if currentIdx < 0 {
-		m.selectedStepID = ""
-		return
-	}
-	if currentIdx >= len(m.spec.Steps)-1 {
-		m.selectedStepID = ""
-		return
-	}
-	m.selectedStepID = string(m.spec.Steps[currentIdx+1].ID)
 }
 
 func graphDimensions(view pipelineView) (int, int) {

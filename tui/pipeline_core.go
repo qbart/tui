@@ -1,4 +1,4 @@
-package core
+package tui
 
 import (
 	"errors"
@@ -509,26 +509,6 @@ func dependencyRowScore(step StepSpec, positions map[StepID]StepPosition) float6
 		return 0
 	}
 	return float64(total) / float64(count)
-}
-
-func findNearestFreeRow(used map[int]bool, preferred int) int {
-	if preferred < 0 {
-		preferred = 0
-	}
-	if !used[preferred] {
-		return preferred
-	}
-
-	for offset := 1; ; offset++ {
-		up := preferred - offset
-		if up >= 0 && !used[up] {
-			return up
-		}
-		down := preferred + offset
-		if !used[down] {
-			return down
-		}
-	}
 }
 
 func findNearestFreeRowAtOrBelow(used map[int]bool, preferred int) int {

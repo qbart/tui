@@ -1,60 +1,85 @@
 # AGENTS.UI.md
 
 ## Purpose
-This document defines the current visual behavior of the terminal UI.
+This repository is a collection of reusable TUI components for Bubble Tea.
 
-## Layout
-- Full-screen Bubble Tea app in alt-screen mode.
-- Two vertical regions:
-  - Content area: takes all rows except the last row.
+Current primary component:
+- `Pipeline` component (`tui.PipelineModel`), which renders and controls a dependency graph of pipeline steps.
 
-## Content Area
-- Background: black (`theme.ContentBackground`).
-- Foreground: white (`theme.ContentForeground`).
-- Padding:
-  - Top: 1 line.
-  - Left/Right: 1 character each side.
-  - Bottom: 0.
-- No pipeline header text is rendered in content.
-- Content displays only the pipeline graph.
+## Package
+- Single public package: `tui` (import path: `tui/tui`).
+- Domain types and UI model live in the same package.
 
-## Step Visuals
-- Step text format: `" <icon?> <job-name> "` with one leading and one trailing space.
-- If icon is empty, only job name is shown with side spaces.
-- Step has no border.
-- Step colors:
-  - Background: black (`theme.StepBackground`, `#000000`).
-  - Foreground: white (`theme.StepForeground`, `#ffffff`).
-- Step width rule: text rune count + 2 padding characters.
+## Pipeline Component
 
-## Pipeline Columns and Positioning
-- Steps are placed by dependency levels (left to right columns).
-- Dependency-free steps appear in the first column.
-- Dependent steps appear in subsequent columns.
-- Vertical placement is computed from dependency layout logic.
-- Steps in the same column are visually separated by one extra blank line.
+### Public Types
+- `type StepID string`
+- `type StepVisualStatus string`
+- `type StepSpec struct { ID StepID; Status StepVisualStatus; JobName string; DependsOn []StepID }`
+- `type PipelineSpec struct { ID string; Steps []StepSpec }`
+- `type PipelineModel struct` (Bubble Tea model)
 
-## Connector Visuals
-- No extra spaces around connector segments.
-- Connector component is configurable:
-  - Width.
-  - Type: `Solid` or `Dashed`.
-  - Color (passed from top-level renderer).
-- Current top-level config:
-  - Type: `Solid`.
-  - Width: `5`.
-  - Color: `theme.ArrowColor`.
-  - Background: `theme.ContentBackground`.
+### Status Values
+- `StatusBlack`
+- `StatusGray`
+- `StatusGreen`
+- `StatusRed`
+- `StatusYellow`
+- `StatusBlue`
+- `StatusOrange`
+- `StatusPurple`
 
-## Connector Rules (Current)
-- Single dependency (step -> one target in next column):
-  - Horizontal line only.
-- Multiple dependencies (step -> multiple targets in next column):
-  - Source row uses split marker with center `┳` and horizontal continuation.
-  - Intermediate target rows use `┣` with horizontal continuation.
-  - Last target row uses `┗` with horizontal continuation.
-  - Spacer rows between source/targets use centered vertical continuation.
-- All connector glyphs are box-drawing heavy style for clean joins.
+### Build Spec
+- `NewPipelineSpec(id string, steps []StepSpec) PipelineSpec`
 
-## Keyboard
-- `q` or `ctrl+c` quits the app.
+### Build UI Model
+- `NewPipelineModel(spec PipelineSpec) PipelineModel`
+
+### Runtime Control API
+- `SetStepStatus(stepID StepID, status StepVisualStatus) error`
+- `SetStepSpinner(stepID StepID, spinning bool) error`
+- `SetStepSelected(stepID StepID) error` (`""` clears selection)
+
+### Runtime Message API (for `Program.Send`)
+- `SetStepStatusMsg`
+- `SetStepSpinnerMsg`
+- `SetStepSelectedMsg`
+
+## Pipeline Rendering Behavior
+
+### Layout
+- Full-screen Bubble Tea-friendly rendering.
+- Graph is padded by 1 line top and bottom.
+- Left/right padding is 1 char when width allows.
+- Horizontal/vertical scrolling supported via viewport offsets.
+
+### Step Bricks
+- Label format: `"  <job-name>  "` (2 spaces on each side).
+- Spinner replaces last rune in the label when enabled.
+- Width = rune count of `job-name` + 4.
+- No border.
+
+### Selection
+- Selected step uses `SelectedBg`/`SelectedFg` theme colors.
+- Selection also highlights upstream and downstream edges.
+
+### Connectors
+- Connectors are drawn directly with box-drawing glyphs on a canvas.
+- Highlighted edges use `ArrowSelectedColor`, non-highlighted use `ArrowColor`.
+
+### Keyboard
+- `q` / `ctrl+c`: quit.
+- `h`,`j`,`k`,`l` or arrows: scroll.
+
+## Theme Tokens (Pipeline-Relevant)
+- `ContentBackground`, `ContentForeground`
+- `StatusBlackBg/Fg`
+- `StatusGrayBg/Fg`
+- `StatusGreenBg/Fg`
+- `StatusRedBg/Fg`
+- `StatusYellowBg/Fg`
+- `StatusBlueBg/Fg`
+- `StatusOrangeBg/Fg`
+- `StatusPurpleBg/Fg`
+- `SelectedBg`, `SelectedFg`
+- `ArrowColor`, `ArrowSelectedColor`

@@ -1,16 +1,14 @@
 package tui
 
-import "tui/core"
-
 var Spinner = []rune("⣾⣽⣻⢿⡿⣟⣯⣷")
 
-const statusSelected core.StepVisualStatus = "StatusSelected"
+const statusSelected StepVisualStatus = "StatusSelected"
 
 type stepView struct {
 	ID        string
 	JobName   string
 	DependsOn []string
-	Status    core.StepVisualStatus
+	Status    StepVisualStatus
 	Spinner   bool
 	SpinChar  string
 }
@@ -32,7 +30,7 @@ type pipelineView struct {
 	HighlightedEdge map[string]bool
 }
 
-func buildPipelineView(spec core.PipelineSpec, stepStates map[core.StepID]StepRuntimeState, spinnerFrame int, selectedStepID string) (pipelineView, error) {
+func buildPipelineView(spec PipelineSpec, stepStates map[StepID]StepRuntimeState, spinnerFrame int, selectedStepID string) (pipelineView, error) {
 	columns, positions, rowCount, err := spec.Layout()
 	if err != nil {
 		return pipelineView{}, err
@@ -97,13 +95,13 @@ func edgeKey(sourceID, targetID string) string {
 	return sourceID + "->" + targetID
 }
 
-func highlightedEdgesForSelection(spec core.PipelineSpec, selectedStepID string) map[string]bool {
+func highlightedEdgesForSelection(spec PipelineSpec, selectedStepID string) map[string]bool {
 	highlighted := map[string]bool{}
 	if selectedStepID == "" {
 		return highlighted
 	}
 
-	stepsByID := make(map[string]core.StepSpec, len(spec.Steps))
+	stepsByID := make(map[string]StepSpec, len(spec.Steps))
 	dependents := make(map[string][]string, len(spec.Steps))
 	for _, step := range spec.Steps {
 		id := string(step.ID)

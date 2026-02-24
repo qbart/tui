@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"tui/core"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
@@ -63,21 +62,21 @@ func (c StepComponent) Colors() (lipgloss.Color, lipgloss.Color) {
 	return stepStatusColors(c.Step.Status)
 }
 
-func stepStatusColors(status core.StepVisualStatus) (lipgloss.Color, lipgloss.Color) {
+func stepStatusColors(status StepVisualStatus) (lipgloss.Color, lipgloss.Color) {
 	switch status {
-	case core.StatusGray:
+	case StatusGray:
 		return theme.StatusGrayBg, theme.StatusGrayFg
-	case core.StatusGreen:
+	case StatusGreen:
 		return theme.StatusGreenBg, theme.StatusGreenFg
-	case core.StatusRed:
+	case StatusRed:
 		return theme.StatusRedBg, theme.StatusRedFg
-	case core.StatusYellow:
+	case StatusYellow:
 		return theme.StatusYellowBg, theme.StatusYellowFg
-	case core.StatusBlue:
+	case StatusBlue:
 		return theme.StatusBlueBg, theme.StatusBlueFg
-	case core.StatusOrange:
+	case StatusOrange:
 		return theme.StatusOrangeBg, theme.StatusOrangeFg
-	case core.StatusPurple:
+	case StatusPurple:
 		return theme.StatusPurpleBg, theme.StatusPurpleFg
 	case statusSelected:
 		return theme.SelectedBg, theme.SelectedFg
