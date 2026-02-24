@@ -30,6 +30,18 @@ func (c StepComponent) RenderBrick() string {
 		Background(bg).
 		Foreground(fg)
 
+	label := c.DisplayLabel()
+
+	return baseTextStyle.
+		Width(width).
+		Render(label)
+}
+
+func (c StepComponent) PlainLabel() string {
+	return "  " + c.Step.JobName + "  "
+}
+
+func (c StepComponent) DisplayLabel() string {
 	label := c.PlainLabel()
 	if c.Step.Spinner && c.Step.SpinChar != "" {
 		r := []rune(label)
@@ -39,14 +51,7 @@ func (c StepComponent) RenderBrick() string {
 			label = string(r)
 		}
 	}
-
-	return baseTextStyle.
-		Width(width).
-		Render(label)
-}
-
-func (c StepComponent) PlainLabel() string {
-	return "  " + c.Step.JobName + "  "
+	return label
 }
 
 func (c StepComponent) PreferredWidth() int {

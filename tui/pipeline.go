@@ -34,12 +34,11 @@ type PipelineView struct {
 	HighlightedEdge map[string]bool
 }
 
-func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun, spinnerFrame int, selectedStepID string) (PipelineView, error) {
+func BuildPipelineView(spec core.PipelineSpec, stepStates map[core.StepID]StepRuntimeState, spinnerFrame int, selectedStepID string) (PipelineView, error) {
 	columns, positions, rowCount, err := spec.Layout()
 	if err != nil {
 		return PipelineView{}, err
 	}
-	runningStepID, hasRunning := run.RunningStepID()
 	highlightedEdges := highlightedEdgesForSelection(spec, selectedStepID)
 
 	viewCols := make([][]StepView, len(columns))
@@ -53,6 +52,13 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun, spinnerFram
 			}
 
 			status := step.Status
+			spinner := false
+			if state, ok := stepStates[step.ID]; ok {
+				if state.Status != "" {
+					status = state.Status
+				}
+				spinner = state.Spinner
+			}
 			if selectedStepID != "" && selectedStepID == string(step.ID) {
 				status = core.StatusSelected
 			}
@@ -62,7 +68,7 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun, spinnerFram
 				JobName:   step.JobName,
 				DependsOn: deps,
 				Status:    status,
-				Spinner:   hasRunning && string(runningStepID) == string(step.ID),
+				Spinner:   spinner,
 				SpinChar:  spinnerGlyph(spinnerFrame),
 			}
 			viewCol = append(viewCol, viewStep)

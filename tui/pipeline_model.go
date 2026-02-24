@@ -16,40 +16,48 @@ import (
 
 type tickMsg time.Time
 
+type SetStepStatusMsg struct {
+	StepID core.StepID
+	Status core.StepVisualStatus
+}
+
+type SetStepSpinnerMsg struct {
+	StepID  core.StepID
+	Spinner bool
+}
+
+type SetStepSelectedMsg struct {
+	StepID core.StepID
+}
+
 type PipelineModel struct {
 	width          int
 	height         int
 	spec           core.PipelineSpec
-	run            core.PipelineRun
-	stepDurations  map[core.StepID]time.Duration
+	stepStates     map[core.StepID]StepRuntimeState
 	spinnerFrame   int
 	scrollX        int
 	scrollY        int
 	selectedStepID string
 }
 
-func NewPipelineModel(spec core.PipelineSpec, runID string) PipelineModel {
-	now := time.Now()
-	run, err := core.NewPipelineRun(spec, runID, now)
-	if err != nil {
-		return PipelineModel{
-			spec: spec,
-			run: core.PipelineRun{
-				ID:        runID,
-				SpecID:    spec.ID,
-				Status:    core.PipelineRunStatusIdle,
-				StartedAt: now,
-				StepRuns:  map[core.StepID]*core.StepRun{},
-			},
-			stepDurations:  map[core.StepID]time.Duration{},
-			selectedStepID: "",
+type StepRuntimeState struct {
+	Status  core.StepVisualStatus
+	Spinner bool
+}
+
+func NewPipelineModel(spec core.PipelineSpec) PipelineModel {
+	stepStates := make(map[core.StepID]StepRuntimeState, len(spec.Steps))
+	for _, step := range spec.Steps {
+		stepStates[step.ID] = StepRuntimeState{
+			Status:  step.Status,
+			Spinner: false,
 		}
 	}
 
 	return PipelineModel{
 		spec:           spec,
-		run:            run,
-		stepDurations:  map[core.StepID]time.Duration{},
+		stepStates:     stepStates,
 		selectedStepID: "",
 	}
 }
@@ -85,9 +93,17 @@ func (m PipelineModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if frameCount > 0 {
 			m.spinnerFrame = (m.spinnerFrame + 1) % frameCount
 		}
-		m.advance(time.Time(msg))
 		m.clampScroll()
 		return m, tickCmd()
+	case SetStepStatusMsg:
+		_ = m.SetStepStatus(msg.StepID, msg.Status)
+		return m, nil
+	case SetStepSpinnerMsg:
+		_ = m.SetStepSpinner(msg.StepID, msg.Spinner)
+		return m, nil
+	case SetStepSelectedMsg:
+		_ = m.SetStepSelected(msg.StepID)
+		return m, nil
 	}
 
 	return m, nil
@@ -100,39 +116,9 @@ func (m PipelineModel) View() string {
 
 	renderWidth := max(m.width-1, 1)
 	contentHeight := max(m.height, 0)
-	content := renderContent(renderWidth, contentHeight, m.spec, m.run, m.spinnerFrame, m.scrollX, m.scrollY, m.selectedStepID)
+	content := renderContent(renderWidth, contentHeight, m.spec, m.stepStates, m.spinnerFrame, m.scrollX, m.scrollY, m.selectedStepID)
 
 	return content
-}
-
-func (m *PipelineModel) advance(at time.Time) {
-	if m.run.IsTerminal() {
-		return
-	}
-
-	if stepID, ok := m.run.RunningStepID(); ok {
-		stepRun := m.run.StepRuns[stepID]
-		if stepRun != nil && stepRun.StartedAt != nil {
-			required := m.stepDurations[stepID]
-			if required == 0 {
-				required = time.Second
-			}
-			if at.Sub(*stepRun.StartedAt) >= required {
-				_ = m.run.CompleteStep(stepID, at, true, 0, "")
-				m.run.RefreshStatus(m.spec, at)
-			}
-		}
-		return
-	}
-
-	ready := m.run.ReadySteps(m.spec)
-	if len(ready) == 0 {
-		m.run.RefreshStatus(m.spec, at)
-		return
-	}
-
-	_ = m.run.StartStep(ready[0], at)
-	m.run.RefreshStatus(m.spec, at)
 }
 
 func tickCmd() tea.Cmd {
@@ -141,7 +127,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineRun, spinnerFrame, scrollX, scrollY int, selectedStepID string) string {
+func renderContent(width, height int, spec core.PipelineSpec, stepStates map[core.StepID]StepRuntimeState, spinnerFrame, scrollX, scrollY int, selectedStepID string) string {
 	if height <= 0 {
 		return ""
 	}
@@ -155,7 +141,7 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 	contentWidth := max(width-(sidePadding*2), 0)
 	innerHeight := max(height-topPadding-bottomPadding, 0)
 
-	view, err := BuildPipelineView(spec, run, spinnerFrame, selectedStepID)
+	view, err := BuildPipelineView(spec, stepStates, spinnerFrame, selectedStepID)
 	if err != nil {
 		msg := clampVisibleLine(fmt.Sprintf("invalid pipeline: %v", err), contentWidth)
 		rows := make([]string, 0, height)
@@ -374,7 +360,7 @@ func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, vie
 				overlaysByRow[y] = append(overlaysByRow[y], stepOverlay{
 					start: x,
 					width: component.PreferredWidth(),
-					label: component.PlainLabel(),
+					label: component.DisplayLabel(),
 					bg:    bg,
 					fg:    fg,
 				})
@@ -564,7 +550,7 @@ func (m *PipelineModel) clampScroll() {
 		m.scrollY = 0
 		return
 	}
-	view, err := BuildPipelineView(m.spec, m.run, m.spinnerFrame, m.selectedStepID)
+	view, err := BuildPipelineView(m.spec, m.stepStates, m.spinnerFrame, m.selectedStepID)
 	if err != nil {
 		m.scrollX = 0
 		m.scrollY = 0
@@ -594,6 +580,42 @@ func (m *PipelineModel) clampScroll() {
 	if m.scrollY > maxY {
 		m.scrollY = maxY
 	}
+}
+
+func (m *PipelineModel) SetStepStatus(stepID core.StepID, status core.StepVisualStatus) error {
+	if _, ok := m.spec.StepByID(stepID); !ok {
+		return fmt.Errorf("unknown step %q", stepID)
+	}
+	state := m.stepStates[stepID]
+	state.Status = status
+	m.stepStates[stepID] = state
+	m.clampScroll()
+	return nil
+}
+
+func (m *PipelineModel) SetStepSpinner(stepID core.StepID, spinning bool) error {
+	if _, ok := m.spec.StepByID(stepID); !ok {
+		return fmt.Errorf("unknown step %q", stepID)
+	}
+	state := m.stepStates[stepID]
+	state.Spinner = spinning
+	m.stepStates[stepID] = state
+	m.clampScroll()
+	return nil
+}
+
+func (m *PipelineModel) SetStepSelected(stepID core.StepID) error {
+	if stepID == "" {
+		m.selectedStepID = ""
+		m.clampScroll()
+		return nil
+	}
+	if _, ok := m.spec.StepByID(stepID); !ok {
+		return fmt.Errorf("unknown step %q", stepID)
+	}
+	m.selectedStepID = string(stepID)
+	m.clampScroll()
+	return nil
 }
 
 func (m *PipelineModel) cycleSelectedStep() {

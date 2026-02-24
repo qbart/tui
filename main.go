@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"tui/core"
 	"tui/tui"
@@ -72,7 +73,19 @@ func main() {
 		{ID: "isolated-beta", JobName: "isolated beta"},
 	})
 
-	p := tea.NewProgram(tui.NewPipelineModel(spec, "example"), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewPipelineModel(spec), tea.WithAltScreen())
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		p.Send(tui.SetStepStatusMsg{StepID: "perf-a-setup", Status: core.StatusGray})
+		time.Sleep(150 * time.Millisecond)
+		p.Send(tui.SetStepSpinnerMsg{StepID: "perf-a-setup", Spinner: true})
+		p.Send(tui.SetStepStatusMsg{StepID: "perf-a-setup", Status: core.StatusYellow})
+		time.Sleep(2 * time.Second)
+		p.Send(tui.SetStepSpinnerMsg{StepID: "perf-a-setup", Spinner: false})
+		p.Send(tui.SetStepStatusMsg{StepID: "perf-a-setup", Status: core.StatusGreen})
+	}()
+
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error running program: %v\n", err)
 		os.Exit(1)
