@@ -1,10 +1,10 @@
-package ui
+package tui
 
 import (
 	"strings"
 	"testing"
 
-	core "hestia/hestia"
+	"tui/core"
 )
 
 func TestConnectorGrid_FanoutFromSingleSource(t *testing.T) {

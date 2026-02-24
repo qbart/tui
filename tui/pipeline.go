@@ -1,6 +1,6 @@
-package ui
+package tui
 
-import core "hestia/hestia"
+import "tui/core"
 
 type StepVisualStatus string
 

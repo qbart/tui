@@ -1,4 +1,4 @@
-package hestia
+package core
 
 import "testing"
 
