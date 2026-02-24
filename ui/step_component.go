@@ -34,7 +34,7 @@ func (c StepComponent) RenderBrick() string {
 	if c.Step.Icon != "" {
 		iconPart = c.Step.Icon + " "
 	}
-	label := " " + iconPart + c.Step.JobName + " "
+	label := "  " + iconPart + c.Step.JobName + "  "
 
 	return baseTextStyle.
 		Width(width).
@@ -46,8 +46,8 @@ func (c StepComponent) PreferredWidth() int {
 	if c.Step.Icon != "" {
 		iconPart = c.Step.Icon + " "
 	}
-	// Text + 2 chars total padding.
-	return utf8.RuneCountInString(iconPart+c.Step.JobName) + 2
+	// Text + 4 chars total padding (2 on each side).
+	return utf8.RuneCountInString(iconPart+c.Step.JobName) + 4
 }
 
 func (c StepComponent) RenderConnectorTo(target StepView, arrow ArrowComponent) string {
