@@ -85,6 +85,8 @@ func stepStatusColors(status core.StepVisualStatus) (lipgloss.Color, lipgloss.Co
 		return theme.StatusBlueBg, theme.StatusBlueFg
 	case core.StatusPurple:
 		return theme.StatusPurpleBg, theme.StatusPurpleFg
+	case core.StatusSelected:
+		return theme.SelectedBg, theme.SelectedFg
 	default:
 		return theme.StatusBlackBg, theme.StatusBlackFg
 	}

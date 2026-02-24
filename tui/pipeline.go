@@ -54,7 +54,7 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun, spinnerFram
 
 			status := step.Status
 			if selectedStepID != "" && selectedStepID == string(step.ID) {
-				status = core.StatusPurple
+				status = core.StatusSelected
 			}
 
 			viewStep := StepView{

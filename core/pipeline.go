@@ -30,6 +30,7 @@ const (
 	StatusYellow StepVisualStatus = "StatusYellow"
 	StatusBlue   StepVisualStatus = "StatusBlue"
 	StatusPurple StepVisualStatus = "StatusPurple"
+	StatusSelected StepVisualStatus = "StatusSelected"
 )
 
 type PipelineRunStatus string
