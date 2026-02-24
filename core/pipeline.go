@@ -23,6 +23,7 @@ const (
 type PipelineRunStatus string
 
 const (
+	PipelineRunStatusIdle      PipelineRunStatus = "idle"
 	PipelineRunStatusRunning   PipelineRunStatus = "running"
 	PipelineRunStatusSucceeded PipelineRunStatus = "succeeded"
 	PipelineRunStatusFailed    PipelineRunStatus = "failed"
