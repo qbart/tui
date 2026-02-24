@@ -23,13 +23,14 @@ const (
 )
 
 const (
-	StatusBlack  StepVisualStatus = "StatusBlack"
-	StatusGray   StepVisualStatus = "StatusGray"
-	StatusGreen  StepVisualStatus = "StatusGreen"
-	StatusRed    StepVisualStatus = "StatusRed"
-	StatusYellow StepVisualStatus = "StatusYellow"
-	StatusBlue   StepVisualStatus = "StatusBlue"
-	StatusPurple StepVisualStatus = "StatusPurple"
+	StatusBlack    StepVisualStatus = "StatusBlack"
+	StatusGray     StepVisualStatus = "StatusGray"
+	StatusGreen    StepVisualStatus = "StatusGreen"
+	StatusRed      StepVisualStatus = "StatusRed"
+	StatusYellow   StepVisualStatus = "StatusYellow"
+	StatusBlue     StepVisualStatus = "StatusBlue"
+	StatusOrange   StepVisualStatus = "StatusOrange"
+	StatusPurple   StepVisualStatus = "StatusPurple"
 	StatusSelected StepVisualStatus = "StatusSelected"
 )
 

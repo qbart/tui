@@ -17,7 +17,7 @@ func main() {
 		{ID: "unit-core", JobName: "unit core", DependsOn: []core.StepID{"checkout"}},
 		{ID: "unit-api", JobName: "unit api", DependsOn: []core.StepID{"checkout"}},
 		{ID: "build-ui-assets", JobName: "build ui assets", DependsOn: []core.StepID{"checkout"}, Status: core.StatusBlue},
-		{ID: "build-api-image", JobName: "build api image", DependsOn: []core.StepID{"checkout"}},
+		{ID: "build-api-image", JobName: "build api image", DependsOn: []core.StepID{"checkout"}, Status: core.StatusOrange},
 		{ID: "build-worker-image", JobName: "build worker image", DependsOn: []core.StepID{"checkout"}},
 		{ID: "policy-scan", JobName: "policy scan", DependsOn: []core.StepID{"lint"}},
 		{ID: "int-postgres", JobName: "int postgres", DependsOn: []core.StepID{"unit-core", "unit-api"}},
