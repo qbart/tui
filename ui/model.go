@@ -266,12 +266,13 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 	}
 
 	const topPadding = 1
+	const bottomPadding = 1
 	sidePadding := 0
 	if width >= 2 {
 		sidePadding = 1
 	}
 	contentWidth := max(width-(sidePadding*2), 0)
-	innerHeight := max(height-topPadding, 0)
+	innerHeight := max(height-topPadding-bottomPadding, 0)
 
 	view, err := BuildPipelineView(spec, run, spinnerFrame)
 	if err != nil {
@@ -281,6 +282,9 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 			rows = append(rows, strings.Repeat(" ", contentWidth))
 		}
 		rows = append(rows, msg)
+		for i := 0; i < bottomPadding; i++ {
+			rows = append(rows, strings.Repeat(" ", contentWidth))
+		}
 		for len(rows) < height {
 			rows = append(rows, strings.Repeat(" ", contentWidth))
 		}
@@ -306,6 +310,9 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 		rows = append(rows, strings.Repeat(" ", contentWidth))
 	}
 	rows = append(rows, lines...)
+	for i := 0; i < bottomPadding; i++ {
+		rows = append(rows, strings.Repeat(" ", contentWidth))
+	}
 	for len(rows) < height {
 		rows = append(rows, strings.Repeat(" ", contentWidth))
 	}
