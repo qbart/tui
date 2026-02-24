@@ -17,6 +17,8 @@ var theme = struct {
 	StatusYellowFg     lipgloss.Color
 	StatusBlueBg       lipgloss.Color
 	StatusBlueFg       lipgloss.Color
+	StatusPurpleBg     lipgloss.Color
+	StatusPurpleFg     lipgloss.Color
 	BrickBorder        lipgloss.Color
 	ArrowColor         lipgloss.Color
 	ArrowSelectedColor lipgloss.Color
@@ -35,6 +37,8 @@ var theme = struct {
 	StatusYellowFg:     lipgloss.Color("#000000"),
 	StatusBlueBg:       lipgloss.Color("#2563eb"),
 	StatusBlueFg:       lipgloss.Color("#ffffff"),
+	StatusPurpleBg:     lipgloss.Color("#7c3aed"),
+	StatusPurpleFg:     lipgloss.Color("#ffffff"),
 	BrickBorder:        lipgloss.Color("240"),
 	ArrowColor:         lipgloss.Color("#9ca3af"),
 	ArrowSelectedColor: lipgloss.Color("#60a5fa"),

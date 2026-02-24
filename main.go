@@ -12,7 +12,7 @@ import (
 
 func main() {
 	spec := core.NewPipelineSpec("sample-cicd", []core.StepSpec{
-		{ID: "checkout", JobName: "checkout"},
+		{ID: "checkout", JobName: "checkout", Status: core.StatusGreen},
 		{ID: "lint", JobName: "lint", DependsOn: []core.StepID{"checkout"}},
 		{ID: "unit-core", JobName: "unit core", DependsOn: []core.StepID{"checkout"}},
 		{ID: "unit-api", JobName: "unit api", DependsOn: []core.StepID{"checkout"}},

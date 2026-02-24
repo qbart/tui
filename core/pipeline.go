@@ -11,13 +11,25 @@ import (
 
 type StepID string
 
-type StepStatus string
+type StepRunStatus string
+
+type StepVisualStatus string
 
 const (
-	StepStatusIdle   StepStatus = "idle"
-	StepStatusDoing  StepStatus = "doing"
-	StepStatusDone   StepStatus = "done"
-	StepStatusFailed StepStatus = "failed"
+	StepRunIdle   StepRunStatus = "idle"
+	StepRunDoing  StepRunStatus = "doing"
+	StepRunFailed StepRunStatus = "failed"
+	StepRunDone   StepRunStatus = "done"
+)
+
+const (
+	StatusBlack  StepVisualStatus = "StatusBlack"
+	StatusGray   StepVisualStatus = "StatusGray"
+	StatusGreen  StepVisualStatus = "StatusGreen"
+	StatusRed    StepVisualStatus = "StatusRed"
+	StatusYellow StepVisualStatus = "StatusYellow"
+	StatusBlue   StepVisualStatus = "StatusBlue"
+	StatusPurple StepVisualStatus = "StatusPurple"
 )
 
 type PipelineRunStatus string
@@ -31,9 +43,9 @@ const (
 
 type StepSpec struct {
 	ID        StepID
+	Status    StepVisualStatus
 	JobName   string
 	DependsOn []StepID
-	Command   string
 }
 
 type PipelineSpec struct {
@@ -47,7 +59,7 @@ type StepPosition struct {
 }
 
 type StepRun struct {
-	Status     StepStatus
+	Status     StepRunStatus
 	StartedAt  *time.Time
 	FinishedAt *time.Time
 	ExitCode   *int
@@ -152,7 +164,7 @@ func NewPipelineRun(spec PipelineSpec, runID string, startedAt time.Time) (Pipel
 
 	stepRuns := make(map[StepID]*StepRun, len(spec.Steps))
 	for _, step := range spec.Steps {
-		stepRuns[step.ID] = &StepRun{Status: StepStatusIdle}
+		stepRuns[step.ID] = &StepRun{Status: StepRunIdle}
 	}
 
 	return PipelineRun{ID: runID, SpecID: spec.ID, Status: PipelineRunStatusRunning, StartedAt: startedAt, StepRuns: stepRuns}, nil
@@ -164,7 +176,7 @@ func (r PipelineRun) IsTerminal() bool {
 
 func (r PipelineRun) RunningStepID() (StepID, bool) {
 	for id, stepRun := range r.StepRuns {
-		if stepRun != nil && stepRun.Status == StepStatusDoing {
+		if stepRun != nil && stepRun.Status == StepRunDoing {
 			return id, true
 		}
 	}
@@ -175,7 +187,7 @@ func (r PipelineRun) ReadySteps(spec PipelineSpec) []StepID {
 	ready := make([]StepID, 0, len(spec.Steps))
 	for _, step := range spec.Steps {
 		stepRun := r.StepRuns[step.ID]
-		if stepRun == nil || stepRun.Status != StepStatusIdle {
+		if stepRun == nil || stepRun.Status != StepRunIdle {
 			continue
 		}
 		if r.dependenciesDone(step.DependsOn) {
@@ -190,10 +202,10 @@ func (r *PipelineRun) StartStep(stepID StepID, at time.Time) error {
 	if !ok {
 		return fmt.Errorf("unknown step %q", stepID)
 	}
-	if stepRun.Status != StepStatusIdle {
+	if stepRun.Status != StepRunIdle {
 		return fmt.Errorf("step %q is not idle", stepID)
 	}
-	stepRun.Status = StepStatusDoing
+	stepRun.Status = StepRunDoing
 	stepRun.StartedAt = &at
 	r.Status = PipelineRunStatusRunning
 	return nil
@@ -204,7 +216,7 @@ func (r *PipelineRun) CompleteStep(stepID StepID, at time.Time, success bool, ex
 	if !ok {
 		return fmt.Errorf("unknown step %q", stepID)
 	}
-	if stepRun.Status != StepStatusDoing {
+	if stepRun.Status != StepRunDoing {
 		return fmt.Errorf("step %q is not doing", stepID)
 	}
 
@@ -215,9 +227,9 @@ func (r *PipelineRun) CompleteStep(stepID StepID, at time.Time, success bool, ex
 		stepRun.Duration = at.Sub(*stepRun.StartedAt)
 	}
 	if success {
-		stepRun.Status = StepStatusDone
+		stepRun.Status = StepRunDone
 	} else {
-		stepRun.Status = StepStatusFailed
+		stepRun.Status = StepRunFailed
 	}
 	return nil
 }
@@ -225,7 +237,7 @@ func (r *PipelineRun) CompleteStep(stepID StepID, at time.Time, success bool, ex
 func (r *PipelineRun) RefreshStatus(spec PipelineSpec, at time.Time) {
 	for _, step := range spec.Steps {
 		stepRun := r.StepRuns[step.ID]
-		if stepRun != nil && stepRun.Status == StepStatusFailed {
+		if stepRun != nil && stepRun.Status == StepRunFailed {
 			r.Status = PipelineRunStatusFailed
 			r.FinishedAt = &at
 			return
@@ -234,7 +246,7 @@ func (r *PipelineRun) RefreshStatus(spec PipelineSpec, at time.Time) {
 
 	for _, step := range spec.Steps {
 		stepRun := r.StepRuns[step.ID]
-		if stepRun == nil || stepRun.Status != StepStatusDone {
+		if stepRun == nil || stepRun.Status != StepRunDone {
 			r.Status = PipelineRunStatusRunning
 			return
 		}
@@ -247,7 +259,7 @@ func (r *PipelineRun) RefreshStatus(spec PipelineSpec, at time.Time) {
 func (r PipelineRun) dependenciesDone(dependencies []StepID) bool {
 	for _, depID := range dependencies {
 		depRun, ok := r.StepRuns[depID]
-		if !ok || depRun == nil || depRun.Status != StepStatusDone {
+		if !ok || depRun == nil || depRun.Status != StepRunDone {
 			return false
 		}
 	}

@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"strings"
+	"tui/core"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
@@ -71,22 +71,20 @@ func dependsOn(step StepView, depID string) bool {
 	return false
 }
 
-func blankBrick(width int) string {
-	return strings.Repeat(" ", max(width, 0))
-}
-
-func stepStatusColors(status StepVisualStatus) (lipgloss.Color, lipgloss.Color) {
+func stepStatusColors(status core.StepVisualStatus) (lipgloss.Color, lipgloss.Color) {
 	switch status {
-	case StatusGray:
+	case core.StatusGray:
 		return theme.StatusGrayBg, theme.StatusGrayFg
-	case StatusGreen:
+	case core.StatusGreen:
 		return theme.StatusGreenBg, theme.StatusGreenFg
-	case StatusRed:
+	case core.StatusRed:
 		return theme.StatusRedBg, theme.StatusRedFg
-	case StatusYellow:
+	case core.StatusYellow:
 		return theme.StatusYellowBg, theme.StatusYellowFg
-	case StatusBlue:
+	case core.StatusBlue:
 		return theme.StatusBlueBg, theme.StatusBlueFg
+	case core.StatusPurple:
+		return theme.StatusPurpleBg, theme.StatusPurpleFg
 	default:
 		return theme.StatusBlackBg, theme.StatusBlackFg
 	}

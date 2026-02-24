@@ -29,7 +29,6 @@ type PipelineModel struct {
 }
 
 func NewPipelineModel(spec core.PipelineSpec, runID string) PipelineModel {
-
 	now := time.Now()
 	run, err := core.NewPipelineRun(spec, runID, now)
 	if err != nil {
@@ -137,7 +136,7 @@ func (m *PipelineModel) advance(at time.Time) {
 }
 
 func tickCmd() tea.Cmd {
-	return tea.Tick(250*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
@@ -515,58 +514,6 @@ func composeRowWithOverlaysViewport(base []rune, highlighted []bool, overlays []
 	return b.String()
 }
 
-type horizontalConnectorGrid struct {
-	lines map[int]map[int]bool
-}
-
-func (g horizontalConnectorGrid) has(lane, row int) bool {
-	laneRows, ok := g.lines[lane]
-	if !ok {
-		return false
-	}
-	return laneRows[row]
-}
-
-func buildHorizontalConnectorGrid(view PipelineView) horizontalConnectorGrid {
-	grid := horizontalConnectorGrid{lines: map[int]map[int]bool{}}
-
-	stepsByID := map[string]StepView{}
-	for _, col := range view.Columns {
-		for _, step := range col {
-			stepsByID[step.ID] = step
-		}
-	}
-
-	for _, target := range stepsByID {
-		targetPos, ok := view.Positions[target.ID]
-		if !ok {
-			continue
-		}
-		targetPort := targetPos.PortIn()
-		for _, depID := range target.DependsOn {
-			sourcePos, ok := view.Positions[depID]
-			if !ok {
-				continue
-			}
-			sourcePort := sourcePos.PortOut()
-			row := sourcePort.Row
-			from := sourcePort.Column
-			to := targetPort.Column
-			if to < from {
-				continue
-			}
-			for lane := from; lane <= to; lane++ {
-				if grid.lines[lane] == nil {
-					grid.lines[lane] = map[int]bool{}
-				}
-				grid.lines[lane][row] = true
-			}
-		}
-	}
-
-	return grid
-}
-
 type columnRenderMetrics struct {
 	StepCount    int
 	MaxStepWidth int
@@ -611,165 +558,6 @@ func buildColumnRenderMetrics(columns [][]StepView) []columnRenderMetrics {
 	return metrics
 }
 
-func renderPipelineSpacerRow(boundaryRow int, columnMetrics []columnRenderMetrics, arrow ArrowComponent, connectors connectorGrid) string {
-	const gap = ""
-	var b strings.Builder
-
-	for col := 0; col < len(columnMetrics); col++ {
-		b.WriteString(blankBrick(columnMetrics[col].MaxStepWidth))
-		if col == len(columnMetrics)-1 {
-			continue
-		}
-		b.WriteString(gap)
-		if connectors.hasBoundaryVertical(col, boundaryRow) {
-			b.WriteString(arrow.RenderVertical(true))
-		} else {
-			b.WriteString(arrow.RenderVertical(false))
-		}
-		b.WriteString(gap)
-	}
-
-	return b.String()
-}
-
-type connectorJunction struct {
-	Left  bool
-	Right bool
-	Up    bool
-	Down  bool
-}
-
-func (j connectorJunction) active() bool {
-	return j.Left || j.Right || j.Up || j.Down
-}
-
-type connectorGrid struct {
-	rowJunctions map[int]map[int]connectorJunction
-	boundaries   map[int]map[int]bool
-}
-
-func (c connectorGrid) rowJunction(lane, row int) (connectorJunction, bool) {
-	laneMap, ok := c.rowJunctions[lane]
-	if !ok {
-		return connectorJunction{}, false
-	}
-	j, ok := laneMap[row]
-	return j, ok
-}
-
-func (c connectorGrid) hasBoundaryVertical(lane, boundaryRow int) bool {
-	laneMap, ok := c.boundaries[lane]
-	if !ok {
-		return false
-	}
-	return laneMap[boundaryRow]
-}
-
-func buildConnectorGrid(view PipelineView) connectorGrid {
-	grid := connectorGrid{
-		rowJunctions: map[int]map[int]connectorJunction{},
-		boundaries:   map[int]map[int]bool{},
-	}
-
-	for _, col := range view.Columns {
-		for _, target := range col {
-			targetPos, ok := view.Positions[target.ID]
-			if !ok || targetPos.Column == 0 {
-				continue
-			}
-			for _, depID := range target.DependsOn {
-				sourcePos, ok := view.Positions[depID]
-				if !ok || sourcePos.Column >= targetPos.Column {
-					continue
-				}
-				drawEdgeByPoints(&grid, sourcePos, targetPos)
-			}
-		}
-	}
-
-	return grid
-}
-
-func drawEdgeByPoints(grid *connectorGrid, source StepPositionView, target StepPositionView) {
-	sourceLane := source.Column
-	targetLane := target.Column - 1
-	if targetLane < sourceLane {
-		return
-	}
-
-	switch {
-	case source.Row == target.Row:
-		drawHorizontalToMarker(grid, sourceLane, targetLane, source.Row, true)
-	case source.Row < target.Row:
-		// # -> * (transit) at source row, then * -> * vertically at target lane.
-		drawHorizontalToMarker(grid, sourceLane, targetLane, source.Row, false)
-		drawVerticalBetweenMarkers(grid, targetLane, source.Row, target.Row)
-		addJunction(grid, targetLane, target.Row, false, true, true, false) // * -> step
-	default:
-		// # -> . at source row, then . -> * vertically at target lane.
-		drawHorizontalToMarker(grid, sourceLane, targetLane, source.Row, false)
-		drawVerticalBetweenMarkers(grid, targetLane, source.Row, target.Row)
-		addJunction(grid, targetLane, target.Row, false, true, false, true) // * -> step
-	}
-}
-
-func drawHorizontalToMarker(grid *connectorGrid, fromLane, toLane, row int, endToStep bool) {
-	for lane := fromLane; lane <= toLane; lane++ {
-		right := lane < toLane || endToStep
-		addJunction(grid, lane, row, true, right, false, false)
-	}
-}
-
-func drawVerticalBetweenMarkers(grid *connectorGrid, lane, fromRow, toRow int) {
-	if fromRow == toRow {
-		return
-	}
-	if fromRow < toRow {
-		addJunction(grid, lane, fromRow, false, false, false, true)
-		for boundary := fromRow; boundary < toRow; boundary++ {
-			addBoundary(grid, lane, boundary)
-		}
-		addJunction(grid, lane, toRow, false, false, true, false)
-		return
-	}
-	addJunction(grid, lane, fromRow, false, false, true, false)
-	for boundary := toRow; boundary < fromRow; boundary++ {
-		addBoundary(grid, lane, boundary)
-	}
-	addJunction(grid, lane, toRow, false, false, false, true)
-}
-
-func addJunction(grid *connectorGrid, lane, row int, left, right, up, down bool) {
-	if grid.rowJunctions[lane] == nil {
-		grid.rowJunctions[lane] = map[int]connectorJunction{}
-	}
-	current := grid.rowJunctions[lane][row]
-	current.Left = current.Left || left
-	current.Right = current.Right || right
-	current.Up = current.Up || up
-	current.Down = current.Down || down
-	grid.rowJunctions[lane][row] = current
-}
-
-func addBoundary(grid *connectorGrid, lane, boundaryRow int) {
-	if grid.boundaries[lane] == nil {
-		grid.boundaries[lane] = map[int]bool{}
-	}
-	grid.boundaries[lane][boundaryRow] = true
-}
-
-func fitToWidth(s string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	fitted := ansi.Truncate(s, width, "")
-	w := lipgloss.Width(fitted)
-	if w < width {
-		return fitted + strings.Repeat(" ", width-w)
-	}
-	return fitted
-}
-
 func (m *PipelineModel) clampScroll() {
 	if m.width <= 0 || m.height <= 0 {
 		m.scrollX = 0
@@ -810,10 +598,10 @@ func (m *PipelineModel) clampScroll() {
 
 func (m *PipelineModel) cycleSelectedStep() {
 	if len(m.spec.Steps) == 0 {
-		m.selectedStepID = "-1"
+		m.selectedStepID = ""
 		return
 	}
-	if m.selectedStepID == "" || m.selectedStepID == "-1" {
+	if m.selectedStepID == "" {
 		m.selectedStepID = string(m.spec.Steps[0].ID)
 		return
 	}
@@ -826,11 +614,11 @@ func (m *PipelineModel) cycleSelectedStep() {
 		}
 	}
 	if currentIdx < 0 {
-		m.selectedStepID = "-1"
+		m.selectedStepID = ""
 		return
 	}
 	if currentIdx >= len(m.spec.Steps)-1 {
-		m.selectedStepID = "-1"
+		m.selectedStepID = ""
 		return
 	}
 	m.selectedStepID = string(m.spec.Steps[currentIdx+1].ID)

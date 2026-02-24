@@ -2,22 +2,13 @@ package tui
 
 import "tui/core"
 
-type StepVisualStatus string
-
-const (
-	StatusBlack  StepVisualStatus = "StatusBlack"
-	StatusGray   StepVisualStatus = "StatusGray"
-	StatusGreen  StepVisualStatus = "StatusGreen"
-	StatusRed    StepVisualStatus = "StatusRed"
-	StatusYellow StepVisualStatus = "StatusYellow"
-	StatusBlue   StepVisualStatus = "StatusBlue"
-)
+var Spinner = []rune("⣾⣽⣻⢿⡿⣟⣯⣷")
 
 type StepView struct {
 	ID        string
 	JobName   string
 	DependsOn []string
-	Status    StepVisualStatus
+	Status    core.StepVisualStatus
 	Spinner   bool
 	SpinChar  string
 }
@@ -61,9 +52,9 @@ func BuildPipelineView(spec core.PipelineSpec, run core.PipelineRun, spinnerFram
 				deps = append(deps, string(dep))
 			}
 
-			status := visualStatusForStepID(string(step.ID))
-			if selectedStepID != "-1" && selectedStepID == string(step.ID) {
-				status = StatusBlue
+			status := step.Status
+			if selectedStepID != "" && selectedStepID == string(step.ID) {
+				status = core.StatusPurple
 			}
 
 			viewStep := StepView{
@@ -105,7 +96,7 @@ func edgeKey(sourceID, targetID string) string {
 
 func highlightedEdgesForSelection(spec core.PipelineSpec, selectedStepID string) map[string]bool {
 	highlighted := map[string]bool{}
-	if selectedStepID == "" || selectedStepID == "-1" {
+	if selectedStepID == "" {
 		return highlighted
 	}
 
@@ -164,34 +155,16 @@ func highlightedEdgesForSelection(spec core.PipelineSpec, selectedStepID string)
 	return highlighted
 }
 
-func visualStatusForStepID(stepID string) StepVisualStatus {
-	switch stepID {
-	case "checkout":
-		return StatusGray
-	case "build":
-		return StatusBlue
-	case "test-postresql":
-		return StatusYellow
-	case "test-sqlite":
-		return StatusGreen
-	case "test-duckdb":
-		return StatusRed
-	default:
-		return StatusBlack
-	}
-}
-
 func spinnerGlyph(frame int) string {
-	frames := []rune("⣾⣽⣻⢿⡿⣟⣯⣷")
-	if len(frames) == 0 {
+	if len(Spinner) == 0 {
 		return ""
 	}
 	if frame < 0 {
 		frame = 0
 	}
-	return string(frames[frame%len(frames)])
+	return string(Spinner[frame%len(Spinner)])
 }
 
 func spinnerFrameCount() int {
-	return len([]rune("⣾⣽⣻⢿⡿⣟⣯⣷"))
+	return len(Spinner)
 }
