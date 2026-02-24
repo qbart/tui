@@ -25,12 +25,12 @@ func (c StepComponent) RenderBrick() string {
 		width = c.PreferredWidth()
 	}
 
-	bg, fg := stepStatusColors(c.Step.Status)
+	bg, fg := c.Colors()
 	baseTextStyle := lipgloss.NewStyle().
 		Background(bg).
 		Foreground(fg)
 
-	label := "  " + c.Step.JobName + "  "
+	label := c.PlainLabel()
 	if c.Step.Spinner && c.Step.SpinChar != "" {
 		r := []rune(label)
 		if len(r) > 0 {
@@ -45,9 +45,17 @@ func (c StepComponent) RenderBrick() string {
 		Render(label)
 }
 
+func (c StepComponent) PlainLabel() string {
+	return "  " + c.Step.JobName + "  "
+}
+
 func (c StepComponent) PreferredWidth() int {
 	// Text + 4 chars total padding (2 on each side).
 	return utf8.RuneCountInString(c.Step.JobName) + 4
+}
+
+func (c StepComponent) Colors() (lipgloss.Color, lipgloss.Color) {
+	return stepStatusColors(c.Step.Status)
 }
 
 func (c StepComponent) RenderConnectorTo(target StepView, arrow ArrowComponent) string {

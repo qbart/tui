@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type tickMsg time.Time
@@ -21,19 +22,37 @@ type Model struct {
 	run           core.PipelineRun
 	stepDurations map[core.StepID]time.Duration
 	spinnerFrame  int
+	scrollX       int
+	scrollY       int
 }
 
 func NewModel() Model {
 	spec := core.NewPipelineSpec("sample-cicd", []core.StepSpec{
 		{ID: "checkout", JobName: "checkout"},
-		{ID: "build", JobName: "build", DependsOn: []core.StepID{"checkout"}},
-		{ID: "build-ui", JobName: "build super ui", DependsOn: []core.StepID{"checkout"}},
-		{ID: "test-postresql", JobName: "test postresql", DependsOn: []core.StepID{"build"}},
-		{ID: "test-sqlite", JobName: "test sqlite", DependsOn: []core.StepID{"build"}},
-		{ID: "test-duckdb", JobName: "test duckdb", DependsOn: []core.StepID{"build"}},
-		{ID: "deploy", JobName: "deploy", DependsOn: []core.StepID{"test-postresql", "test-sqlite", "test-duckdb"}},
-		{ID: "deploy-ui", JobName: "deploy ui", DependsOn: []core.StepID{"build-ui"}},
-		{ID: "notify", JobName: "notify", DependsOn: []core.StepID{"deploy", "deploy-ui"}},
+		{ID: "lint", JobName: "lint", DependsOn: []core.StepID{"checkout"}},
+		{ID: "unit-core", JobName: "unit core", DependsOn: []core.StepID{"checkout"}},
+		{ID: "unit-api", JobName: "unit api", DependsOn: []core.StepID{"checkout"}},
+		{ID: "build-ui-assets", JobName: "build ui assets", DependsOn: []core.StepID{"checkout"}},
+		{ID: "build-api-image", JobName: "build api image", DependsOn: []core.StepID{"checkout"}},
+		{ID: "build-worker-image", JobName: "build worker image", DependsOn: []core.StepID{"checkout"}},
+		{ID: "policy-scan", JobName: "policy scan", DependsOn: []core.StepID{"lint"}},
+		{ID: "int-postgres", JobName: "int postgres", DependsOn: []core.StepID{"unit-core", "unit-api"}},
+		{ID: "int-sqlite", JobName: "int sqlite", DependsOn: []core.StepID{"unit-core"}},
+		{ID: "int-duckdb", JobName: "int duckdb", DependsOn: []core.StepID{"unit-api"}},
+		{ID: "e2e-web", JobName: "e2e web", DependsOn: []core.StepID{"build-ui-assets", "build-api-image"}},
+		{ID: "e2e-mobile", JobName: "e2e mobile", DependsOn: []core.StepID{"build-ui-assets", "build-api-image"}},
+		{ID: "worker-smoke", JobName: "worker smoke", DependsOn: []core.StepID{"build-worker-image"}},
+		{ID: "quality-gate", JobName: "quality gate", DependsOn: []core.StepID{"policy-scan", "int-postgres", "int-sqlite", "int-duckdb", "e2e-web", "e2e-mobile", "worker-smoke"}},
+		{ID: "package-api", JobName: "package api", DependsOn: []core.StepID{"quality-gate"}},
+		{ID: "package-worker", JobName: "package worker", DependsOn: []core.StepID{"quality-gate"}},
+		{ID: "package-ui", JobName: "package ui", DependsOn: []core.StepID{"quality-gate"}},
+		{ID: "deploy-staging", JobName: "deploy staging", DependsOn: []core.StepID{"package-api", "package-worker", "package-ui"}},
+		{ID: "smoke-staging", JobName: "smoke staging", DependsOn: []core.StepID{"deploy-staging"}},
+		{ID: "perf-staging", JobName: "perf staging", DependsOn: []core.StepID{"deploy-staging"}},
+		{ID: "approve-prod", JobName: "approve prod", DependsOn: []core.StepID{"smoke-staging", "perf-staging"}},
+		{ID: "deploy-prod", JobName: "deploy prod", DependsOn: []core.StepID{"approve-prod"}},
+		{ID: "verify-prod", JobName: "verify prod", DependsOn: []core.StepID{"deploy-prod"}},
+		{ID: "notify-success", JobName: "notify success", DependsOn: []core.StepID{"verify-prod"}},
 	})
 
 	now := time.Now()
@@ -56,15 +75,31 @@ func NewModel() Model {
 		spec: spec,
 		run:  run,
 		stepDurations: map[core.StepID]time.Duration{
-			"checkout":       1 * time.Second,
-			"build":          2 * time.Second,
-			"build-ui":       2 * time.Second,
-			"test-postresql": 2 * time.Second,
-			"test-sqlite":    2 * time.Second,
-			"test-duckdb":    2 * time.Second,
-			"deploy":         1 * time.Second,
-			"deploy-ui":      1 * time.Second,
-			"notify":         1 * time.Second,
+			"checkout":           1 * time.Second,
+			"lint":               1 * time.Second,
+			"unit-core":          2 * time.Second,
+			"unit-api":           2 * time.Second,
+			"build-ui-assets":    2 * time.Second,
+			"build-api-image":    2 * time.Second,
+			"build-worker-image": 2 * time.Second,
+			"policy-scan":        1 * time.Second,
+			"int-postgres":       2 * time.Second,
+			"int-sqlite":         2 * time.Second,
+			"int-duckdb":         2 * time.Second,
+			"e2e-web":            2 * time.Second,
+			"e2e-mobile":         2 * time.Second,
+			"worker-smoke":       1 * time.Second,
+			"quality-gate":       1 * time.Second,
+			"package-api":        1 * time.Second,
+			"package-worker":     1 * time.Second,
+			"package-ui":         1 * time.Second,
+			"deploy-staging":     2 * time.Second,
+			"smoke-staging":      1 * time.Second,
+			"perf-staging":       2 * time.Second,
+			"approve-prod":       1 * time.Second,
+			"deploy-prod":        2 * time.Second,
+			"verify-prod":        1 * time.Second,
+			"notify-success":     1 * time.Second,
 		},
 	}
 }
@@ -79,16 +114,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "up", "k":
+			m.scrollY--
+		case "down", "j":
+			m.scrollY++
+		case "left", "h":
+			m.scrollX--
+		case "right", "l":
+			m.scrollX++
 		}
+		m.clampScroll()
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.clampScroll()
 	case tickMsg:
 		frameCount := spinnerFrameCount()
 		if frameCount > 0 {
 			m.spinnerFrame = (m.spinnerFrame + 1) % frameCount
 		}
 		m.advance(time.Time(msg))
+		m.clampScroll()
 		return m, tickCmd()
 	}
 
@@ -100,9 +146,11 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
+	renderWidth := max(m.width-1, 1)
 	contentHeight := max(m.height-1, 0)
-	content := renderContent(m.width, contentHeight, m.spec, m.run, m.spinnerFrame)
-	footer := renderFooter(m.width, fmt.Sprintf("run:%s | q to quit", m.run.Status))
+	content := renderContent(renderWidth, contentHeight, m.spec, m.run, m.spinnerFrame, m.scrollX, m.scrollY)
+	content = clampRenderedBlock(content, renderWidth, contentHeight)
+	footer := renderFooter(renderWidth, fmt.Sprintf("run:%s | q to quit", m.run.Status))
 
 	if content == "" {
 		return footer
@@ -147,33 +195,35 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineRun, spinnerFrame int) string {
+func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineRun, spinnerFrame, scrollX, scrollY int) string {
 	if height <= 0 {
 		return ""
 	}
 
 	const topPadding = 1
-	innerWidth := max(width, 0)
-	hPadding := 0
+	sidePadding := 0
 	if width >= 2 {
-		innerWidth = width - 2
-		hPadding = 1
+		sidePadding = 1
 	}
+	contentWidth := max(width-(sidePadding*2), 0)
 	innerHeight := max(height-topPadding, 0)
 
 	view, err := BuildPipelineView(spec, run, spinnerFrame)
 	if err != nil {
-		return lipgloss.NewStyle().
-			Background(theme.ContentBackground).
-			Foreground(theme.ContentForeground).
-			Width(innerWidth).
-			Height(innerHeight).
-			Padding(topPadding, hPadding, 0, hPadding).
-			Render(fmt.Sprintf("invalid pipeline: %v", err))
+		msg := clampVisibleLine(fmt.Sprintf("invalid pipeline: %v", err), contentWidth)
+		rows := make([]string, 0, height)
+		for i := 0; i < topPadding; i++ {
+			rows = append(rows, strings.Repeat(" ", contentWidth))
+		}
+		rows = append(rows, msg)
+		for len(rows) < height {
+			rows = append(rows, strings.Repeat(" ", contentWidth))
+		}
+		return renderContentRows(rows, width, sidePadding)
 	}
 
 	lines := make([]string, 0, innerHeight)
-	lines = append(lines, renderPipelineGraph(view)...)
+	lines = append(lines, renderPipelineGraph(view, scrollX, scrollY, contentWidth, innerHeight)...)
 
 	for len(lines) > innerHeight {
 		lines = lines[:innerHeight]
@@ -182,22 +232,40 @@ func renderContent(width, height int, spec core.PipelineSpec, run core.PipelineR
 	for len(lines) < innerHeight {
 		lines = append(lines, "")
 	}
+	for i := range lines {
+		lines[i] = clampVisibleLine(lines[i], contentWidth)
+	}
 
-	return lipgloss.NewStyle().
-		Background(theme.ContentBackground).
-		Foreground(theme.ContentForeground).
-		Width(innerWidth).
-		Height(innerHeight).
-		Padding(topPadding, hPadding, 0, hPadding).
-		Render(strings.Join(lines, "\n"))
+	rows := make([]string, 0, height)
+	for i := 0; i < topPadding; i++ {
+		rows = append(rows, strings.Repeat(" ", contentWidth))
+	}
+	rows = append(rows, lines...)
+	for len(rows) < height {
+		rows = append(rows, strings.Repeat(" ", contentWidth))
+	}
+
+	return renderContentRows(rows, width, sidePadding)
 }
 
-func renderPipelineGraph(view PipelineView) []string {
+func renderContentRows(rows []string, width, sidePadding int) string {
+	side := strings.Repeat(" ", sidePadding)
+	lineStyle := lipgloss.NewStyle().
+		Background(theme.ContentBackground).
+		Foreground(theme.ContentForeground)
+	for i := range rows {
+		rows[i] = clampVisibleLine(side+rows[i]+side, width)
+		rows[i] = lineStyle.Render(rows[i])
+	}
+	return strings.Join(rows, "\n")
+}
+
+func renderPipelineGraph(view PipelineView, scrollX, scrollY, viewportWidth, viewportHeight int) []string {
 	if len(view.Columns) == 0 {
 		return []string{"(no steps)"}
 	}
 
-	if view.RowCount == 0 {
+	if view.RowCount == 0 || viewportWidth <= 0 || viewportHeight <= 0 {
 		return []string{"(no steps)"}
 	}
 
@@ -314,18 +382,36 @@ func renderPipelineGraph(view PipelineView) []string {
 			x := columnStarts[col]
 			if step, ok := stepsByCell[col][row]; ok {
 				component := NewStepComponent(step, 0)
+				bg, fg := component.Colors()
 				overlaysByRow[y] = append(overlaysByRow[y], stepOverlay{
-					start:  x,
-					width:  component.PreferredWidth(),
-					styled: component.RenderBrick(),
+					start: x,
+					width: component.PreferredWidth(),
+					label: component.PlainLabel(),
+					bg:    bg,
+					fg:    fg,
 				})
 			}
 		}
 	}
 
-	rows := make([]string, totalRows)
-	for y := 0; y < totalRows; y++ {
-		rows[y] = composeRowWithOverlays(canvas[y], overlaysByRow[y])
+	if scrollX < 0 {
+		scrollX = 0
+	}
+	if scrollY < 0 {
+		scrollY = 0
+	}
+	maxScrollX := max(totalWidth-viewportWidth, 0)
+	maxScrollY := max(totalRows-viewportHeight, 0)
+	if scrollX > maxScrollX {
+		scrollX = maxScrollX
+	}
+	if scrollY > maxScrollY {
+		scrollY = maxScrollY
+	}
+
+	rows := make([]string, 0, viewportHeight)
+	for y := scrollY; y < min(scrollY+viewportHeight, totalRows); y++ {
+		rows = append(rows, composeRowWithOverlaysViewport(canvas[y], overlaysByRow[y], scrollX, viewportWidth))
 	}
 
 	return rows
@@ -360,44 +446,78 @@ func connectorRune(c linePointConn) rune {
 	}
 }
 
-func composeRowWithOverlays(base []rune, overlays []stepOverlay) string {
-	baseStyle := lipgloss.NewStyle().
-		Background(theme.ContentBackground).
-		Foreground(theme.ArrowColor)
+func composeRowWithOverlaysViewport(base []rune, overlays []stepOverlay, scrollX, viewportWidth int) string {
+	if scrollX < 0 {
+		scrollX = 0
+	}
+	if scrollX > len(base) {
+		scrollX = len(base)
+	}
+	right := min(scrollX+viewportWidth, len(base))
 
-	if len(overlays) == 0 {
-		return baseStyle.Render(string(base))
+	row := make([]styledCell, len(base))
+	for i, ch := range base {
+		row[i] = styledCell{
+			ch: ch,
+			bg: theme.ContentBackground,
+			fg: theme.ArrowColor,
+		}
 	}
 
 	sort.SliceStable(overlays, func(i, j int) bool {
 		return overlays[i].start < overlays[j].start
 	})
 
-	var b strings.Builder
-	cursor := 0
 	for _, ov := range overlays {
-		if ov.width <= 0 || ov.start >= len(base) {
+		if ov.width <= 0 || ov.start >= len(row) {
 			continue
 		}
-		start := ov.start
-		if start < cursor {
-			start = cursor
+		labelRunes := []rune(ov.label)
+		start := max(ov.start, 0)
+		end := min(ov.start+ov.width, len(row))
+		for x := start; x < end; x++ {
+			labelIdx := x - ov.start
+			ch := ' '
+			if labelIdx >= 0 && labelIdx < len(labelRunes) {
+				ch = labelRunes[labelIdx]
+			}
+			row[x] = styledCell{ch: ch, bg: ov.bg, fg: ov.fg}
 		}
-		if start > len(base) {
-			start = len(base)
-		}
-		if start > cursor {
-			b.WriteString(baseStyle.Render(string(base[cursor:start])))
-		}
-		b.WriteString(ov.styled)
-		end := start + ov.width
-		if end > len(base) {
-			end = len(base)
-		}
-		cursor = end
 	}
-	if cursor < len(base) {
-		b.WriteString(baseStyle.Render(string(base[cursor:])))
+
+	visible := row[scrollX:right]
+	var b strings.Builder
+	if len(visible) > 0 {
+		curBG := visible[0].bg
+		curFG := visible[0].fg
+		segment := make([]rune, 0, len(visible))
+		flush := func() {
+			if len(segment) == 0 {
+				return
+			}
+			b.WriteString(lipgloss.NewStyle().
+				Background(curBG).
+				Foreground(curFG).
+				Render(string(segment)))
+			segment = segment[:0]
+		}
+		for _, cell := range visible {
+			if cell.bg != curBG || cell.fg != curFG {
+				flush()
+				curBG = cell.bg
+				curFG = cell.fg
+			}
+			segment = append(segment, cell.ch)
+		}
+		flush()
+	}
+	currentWidth := lipgloss.Width(b.String())
+	for currentWidth < viewportWidth {
+		b.WriteString(lipgloss.NewStyle().
+			Background(theme.ContentBackground).
+			Foreground(theme.ArrowColor).
+			Render(" "))
+		currentWidth++
 	}
 	return b.String()
 }
@@ -467,9 +587,17 @@ type linePointConn struct {
 }
 
 type stepOverlay struct {
-	start  int
-	width  int
-	styled string
+	start int
+	width int
+	label string
+	bg    lipgloss.Color
+	fg    lipgloss.Color
+}
+
+type styledCell struct {
+	ch rune
+	bg lipgloss.Color
+	fg lipgloss.Color
 }
 
 func buildColumnRenderMetrics(columns [][]StepView) []columnRenderMetrics {
@@ -653,13 +781,67 @@ func fitToWidth(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	if len(s) > width {
-		return s[:width]
+	fitted := ansi.Truncate(s, width, "")
+	w := lipgloss.Width(fitted)
+	if w < width {
+		return fitted + strings.Repeat(" ", width-w)
 	}
-	if len(s) < width {
-		return s + strings.Repeat(" ", width-len(s))
+	return fitted
+}
+
+func (m *Model) clampScroll() {
+	if m.width <= 0 || m.height <= 0 {
+		m.scrollX = 0
+		m.scrollY = 0
+		return
 	}
-	return s
+	view, err := BuildPipelineView(m.spec, m.run, m.spinnerFrame)
+	if err != nil {
+		m.scrollX = 0
+		m.scrollY = 0
+		return
+	}
+	totalWidth, totalRows := graphDimensions(view)
+
+	contentHeight := max(m.height-1, 0)
+	innerHeight := max(contentHeight-1, 0)
+	renderWidth := max(m.width-1, 1)
+	innerWidth := max(renderWidth, 0)
+	if renderWidth >= 2 {
+		innerWidth = renderWidth - 2
+	}
+
+	maxX := max(totalWidth-innerWidth, 0)
+	maxY := max(totalRows-innerHeight, 0)
+	if m.scrollX < 0 {
+		m.scrollX = 0
+	}
+	if m.scrollY < 0 {
+		m.scrollY = 0
+	}
+	if m.scrollX > maxX {
+		m.scrollX = maxX
+	}
+	if m.scrollY > maxY {
+		m.scrollY = maxY
+	}
+}
+
+func graphDimensions(view PipelineView) (int, int) {
+	if len(view.Columns) == 0 || view.RowCount == 0 {
+		return 0, 0
+	}
+	columnMetrics := buildColumnRenderMetrics(view.Columns)
+	const gapWidth = 5
+	totalWidth := 0
+	for col := 0; col < len(view.Columns); col++ {
+		totalWidth += columnMetrics[col].MaxStepWidth
+		if col < len(view.Columns)-1 {
+			totalWidth += gapWidth
+		}
+	}
+	totalRows := view.RowCount*2 - 1
+	return totalWidth, totalRows
 }
 
 func max(a, b int) int {
@@ -667,4 +849,40 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func clampVisibleLine(line string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	clamped := ansi.Truncate(line, width, "")
+	w := lipgloss.Width(clamped)
+	if w < width {
+		clamped += strings.Repeat(" ", width-w)
+	}
+	return clamped
+}
+
+func clampRenderedBlock(block string, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	lines := strings.Split(block, "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for i := range lines {
+		lines[i] = clampVisibleLine(lines[i], width)
+	}
+	for len(lines) < height {
+		lines = append(lines, strings.Repeat(" ", width))
+	}
+	return strings.Join(lines, "\n")
 }
