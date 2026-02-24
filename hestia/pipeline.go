@@ -332,10 +332,16 @@ func (p PipelineSpec) Layout() ([][]StepSpec, map[StepID]StepPosition, int, erro
 		return nil, nil, 0, err
 	}
 
-	positions := make(map[StepID]StepPosition, len(p.Steps))
+	positions, maxRow := computePositions(columns, levels, p.Steps)
+	positions, maxRow = stackDisconnectedComponentsBelowPrimary(p.Steps, positions)
+	return columns, positions, maxRow + 1, nil
+}
+
+func computePositions(columns [][]StepSpec, levels map[StepID]int, allSteps []StepSpec) (map[StepID]StepPosition, int) {
+	positions := make(map[StepID]StepPosition, len(allSteps))
 	occupied := map[int]map[int]bool{}
 	maxRow := -1
-	nextColumnDependents := buildNextColumnDependents(p.Steps, levels)
+	nextColumnDependents := buildNextColumnDependents(allSteps, levels)
 
 	for colIdx, colSteps := range columns {
 		if occupied[colIdx] == nil {
@@ -379,7 +385,169 @@ func (p PipelineSpec) Layout() ([][]StepSpec, map[StepID]StepPosition, int, erro
 		}
 	}
 
-	return columns, positions, maxRow + 1, nil
+	return positions, maxRow
+}
+
+func stackDisconnectedComponentsBelowPrimary(steps []StepSpec, positions map[StepID]StepPosition) (map[StepID]StepPosition, int) {
+	if len(steps) == 0 || len(positions) == 0 {
+		return positions, -1
+	}
+
+	comps := connectedComponents(steps)
+	if len(comps) <= 1 {
+		maxRow := -1
+		for _, pos := range positions {
+			if pos.Row > maxRow {
+				maxRow = pos.Row
+			}
+		}
+		return positions, maxRow
+	}
+
+	stepOrder := make(map[StepID]int, len(steps))
+	for i, s := range steps {
+		stepOrder[s.ID] = i
+	}
+
+	componentByStep := make(map[StepID]int, len(steps))
+	for i, comp := range comps {
+		for _, id := range comp {
+			componentByStep[id] = i
+		}
+	}
+
+	primaryComp := componentByStep[steps[0].ID]
+	type bounds struct {
+		minRow int
+		maxRow int
+	}
+	compBounds := make(map[int]bounds, len(comps))
+	for compIdx, comp := range comps {
+		minRow := math.MaxInt
+		maxRow := -1
+		for _, id := range comp {
+			pos, ok := positions[id]
+			if !ok {
+				continue
+			}
+			if pos.Row < minRow {
+				minRow = pos.Row
+			}
+			if pos.Row > maxRow {
+				maxRow = pos.Row
+			}
+		}
+		if minRow == math.MaxInt {
+			minRow = 0
+		}
+		compBounds[compIdx] = bounds{minRow: minRow, maxRow: maxRow}
+	}
+
+	primaryMax := compBounds[primaryComp].maxRow
+	if primaryMax < 0 {
+		primaryMax = 0
+	}
+
+	otherComps := make([]int, 0, len(comps)-1)
+	for i := range comps {
+		if i == primaryComp {
+			continue
+		}
+		otherComps = append(otherComps, i)
+	}
+	sort.SliceStable(otherComps, func(i, j int) bool {
+		a := comps[otherComps[i]]
+		b := comps[otherComps[j]]
+		if len(a) == 0 || len(b) == 0 {
+			return len(a) < len(b)
+		}
+		return stepOrder[a[0]] < stepOrder[b[0]]
+	})
+
+	nextBase := primaryMax + 1
+	for _, compIdx := range otherComps {
+		compSet := make(map[StepID]bool, len(comps[compIdx]))
+		for _, id := range comps[compIdx] {
+			compSet[id] = true
+		}
+
+		subSteps := make([]StepSpec, 0, len(compSet))
+		for _, step := range steps {
+			if compSet[step.ID] {
+				subSteps = append(subSteps, step)
+			}
+		}
+
+		subSpec := PipelineSpec{ID: "component", Steps: subSteps}
+		subColumns, subLevels, err := subSpec.Columns()
+		if err != nil {
+			// Fall back to existing positions when a sub-layout fails unexpectedly.
+			b := compBounds[compIdx]
+			shift := nextBase - b.minRow
+			for _, id := range comps[compIdx] {
+				pos := positions[id]
+				pos.Row += shift
+				positions[id] = pos
+			}
+			nextBase = b.maxRow + shift + 1
+			continue
+		}
+
+		subPos, subMax := computePositions(subColumns, subLevels, subSteps)
+		for _, id := range comps[compIdx] {
+			local := subPos[id]
+			local.Row += nextBase
+			positions[id] = StepPosition{Column: local.Column, Row: local.Row}
+		}
+		nextBase += subMax + 1
+	}
+
+	maxRow := -1
+	for _, pos := range positions {
+		if pos.Row > maxRow {
+			maxRow = pos.Row
+		}
+	}
+	return positions, maxRow
+}
+
+func connectedComponents(steps []StepSpec) [][]StepID {
+	adj := make(map[StepID][]StepID, len(steps))
+	for _, s := range steps {
+		adj[s.ID] = adj[s.ID]
+	}
+	for _, s := range steps {
+		for _, dep := range s.DependsOn {
+			adj[s.ID] = append(adj[s.ID], dep)
+			adj[dep] = append(adj[dep], s.ID)
+		}
+	}
+
+	seen := make(map[StepID]bool, len(steps))
+	comps := make([][]StepID, 0)
+	for _, s := range steps {
+		if seen[s.ID] {
+			continue
+		}
+		queue := []StepID{s.ID}
+		seen[s.ID] = true
+		comp := make([]StepID, 0)
+		for len(queue) > 0 {
+			id := queue[0]
+			queue = queue[1:]
+			comp = append(comp, id)
+			for _, n := range adj[id] {
+				if seen[n] {
+					continue
+				}
+				seen[n] = true
+				queue = append(queue, n)
+			}
+		}
+		sort.SliceStable(comp, func(i, j int) bool { return comp[i] < comp[j] })
+		comps = append(comps, comp)
+	}
+	return comps
 }
 
 func buildNextColumnDependents(steps []StepSpec, levels map[StepID]int) map[StepID][]StepID {

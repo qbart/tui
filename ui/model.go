@@ -54,6 +54,15 @@ func NewModel() Model {
 		{ID: "deploy-prod", JobName: "deploy prod", DependsOn: []core.StepID{"approve-prod"}},
 		{ID: "verify-prod", JobName: "verify prod", DependsOn: []core.StepID{"deploy-prod"}},
 		{ID: "notify-success", JobName: "notify success", DependsOn: []core.StepID{"verify-prod"}},
+		// Disconnected test data (not connected to existing pipeline nodes).
+		{ID: "sandbox-a-prepare", JobName: "sandbox a prepare"},
+		{ID: "sandbox-a-run", JobName: "sandbox a run", DependsOn: []core.StepID{"sandbox-a-prepare"}},
+		{ID: "sandbox-a-report", JobName: "sandbox a report", DependsOn: []core.StepID{"sandbox-a-run"}},
+		{ID: "sandbox-b-prepare", JobName: "sandbox b prepare"},
+		{ID: "sandbox-b-run", JobName: "sandbox b run", DependsOn: []core.StepID{"sandbox-b-prepare"}},
+		{ID: "sandbox-b-cleanup", JobName: "sandbox b cleanup", DependsOn: []core.StepID{"sandbox-b-run"}},
+		{ID: "orphan-healthcheck", JobName: "orphan healthcheck"},
+		{ID: "orphan-metrics", JobName: "orphan metrics"},
 	})
 
 	now := time.Now()
@@ -101,6 +110,14 @@ func NewModel() Model {
 			"deploy-prod":        2 * time.Second,
 			"verify-prod":        1 * time.Second,
 			"notify-success":     1 * time.Second,
+			"sandbox-a-prepare":  1 * time.Second,
+			"sandbox-a-run":      2 * time.Second,
+			"sandbox-a-report":   1 * time.Second,
+			"sandbox-b-prepare":  1 * time.Second,
+			"sandbox-b-run":      2 * time.Second,
+			"sandbox-b-cleanup":  1 * time.Second,
+			"orphan-healthcheck": 1 * time.Second,
+			"orphan-metrics":     1 * time.Second,
 		},
 	}
 }
