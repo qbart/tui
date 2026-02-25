@@ -1,4 +1,4 @@
-module tui
+module github.com/qbart/tui
 
 go 1.25
 
